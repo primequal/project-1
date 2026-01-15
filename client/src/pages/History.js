@@ -13,7 +13,7 @@ const History = () => {
       const token = localStorage.getItem('token');
       const res = await axios.get(`http://localhost:5000/api/games/history`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { opponent: searchName, date: searchDate } // Gửi kèm tham số tìm kiếm
+        params: { opponent: searchName, date: searchDate } 
       });
       setGames(res.data);
     } catch (err) {
@@ -21,7 +21,6 @@ const History = () => {
     }
   };
 
-  // Tự động tải lại khi nhấn nút Tìm kiếm hoặc khi vào trang
   useEffect(() => {
     fetchHistory();
   }, []);
@@ -31,7 +30,6 @@ const History = () => {
       <button onClick={() => navigate('/dashboard')}>← Quay lại Dashboard</button>
       <h2 style={{ textAlign: 'center' }}>Lịch Sử Ván Đấu</h2>
 
-      {/* THANH TÌM KIẾM */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', justifyContent: 'center' }}>
         <input 
           type="text" placeholder="Tìm theo tên đối thủ..." 
@@ -46,13 +44,13 @@ const History = () => {
         <button onClick={fetchHistory} style={{ cursor: 'pointer' }}>Tìm kiếm</button>
       </div>
 
-      {/* BẢNG LỊCH SỬ */}
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
         <thead>
           <tr style={{ backgroundColor: '#f4f4f4' }}>
             <th style={tableHeader}>Ngày diễn ra</th>
             <th style={tableHeader}>Đối thủ</th>
             <th style={tableHeader}>Kết quả</th>
+            <th style={tableHeader}>Biến động Elo</th> {/* Cột mới */}
             <th style={tableHeader}>Hành động</th>
           </tr>
         </thead>
@@ -64,6 +62,15 @@ const History = () => {
             const isWin = game.winner_id === currentUser.id;
             const isDraw = game.winner_id === null;
 
+            // Xác định elo change của mình
+            // Nếu mình là P1 thì lấy p1_elo_change, ngược lại lấy p2_elo_change
+            // Nếu giá trị null (ván cũ chưa có tính năng này) thì hiện 0
+            const eloDiff = isP1 ? (game.p1_elo_change || 0) : (game.p2_elo_change || 0);
+            
+            // Định dạng màu sắc: Dương xanh, Âm đỏ
+            const eloColor = eloDiff > 0 ? 'green' : (eloDiff < 0 ? 'red' : 'gray');
+            const eloText = eloDiff > 0 ? `+${eloDiff}` : `${eloDiff}`;
+
             return (
               <tr key={game.id} style={{ borderBottom: '1px solid #ddd' }}>
                 <td style={tableCell}>{new Date(game.end_time).toLocaleString()}</td>
@@ -71,6 +78,12 @@ const History = () => {
                 <td style={{ ...tableCell, color: isDraw ? 'gray' : (isWin ? 'green' : 'red'), fontWeight: 'bold' }}>
                   {isDraw ? 'Hòa' : (isWin ? 'Thắng' : 'Thua')}
                 </td>
+                
+                {/* HIỂN THỊ BIẾN ĐỘNG ELO */}
+                <td style={{ ...tableCell, color: eloColor, fontWeight: 'bold' }}>
+                    {eloText}
+                </td>
+
                 <td style={tableCell}>
                   <button 
                     onClick={() => navigate(`/replay/${game.id}`)}

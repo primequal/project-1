@@ -15,6 +15,13 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
     useEffect(() => {
         const onReceiveMove = (data) => {
             console.log('=== CLIENT: RECEIVED MOVE ===', data);
+            // Nếu nước đi này là của chính mình (cùng quân cờ), không xử lý
+            // Vì server emit 'receive_move' tới tất cả players trong room
+            if (data.piece === myPiece) {
+                console.log('=== CLIENT: Ignoring own move ===');
+                return;
+            }
+            
             setBoard(prev => {
                 const nb = prev.map(r => [...r]);
                 nb[data.r][data.c] = data.piece;
@@ -32,7 +39,7 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
             console.log('=== CLIENT: Removing receive_move listener ===');
             socket.off('receive_move', onReceiveMove);
         };
-    }, [setIsMyTurn]);
+    }, [setIsMyTurn, myPiece]);
 
     const handleClick = (r, c) => {
         // CHẶN TUYỆT ĐỐI nếu game đã kết thúc hoặc không phải lượt

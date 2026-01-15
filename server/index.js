@@ -3,6 +3,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const db = require('./config/db');
+const path = require('path'); // Thêm thư viện path
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
@@ -15,6 +16,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// --- CẤU HÌNH CHO PHÉP TRUY CẬP ẢNH TĨNH ---
+// Bất kỳ đường dẫn nào bắt đầu bằng /uploads sẽ trỏ vào folder uploads của server
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// --------------------------------------------
+
 app.use('/api/auth', authRoutes);
 app.use('/api/games', gameRoutes);
 
@@ -26,12 +32,8 @@ let activeGames = {};
 let userToRoom = {};
 let userToSocket = {}; 
 
-// Helper: Tạo ID phòng ngẫu nhiên cho PvF (5 chữ số)
-const generateRoomId = () => {
-    return Math.floor(10000 + Math.random() * 90000).toString();
-};
+const generateRoomId = () => Math.floor(10000 + Math.random() * 90000).toString();
 
-// Helper: Xử lý forfeit
 const handlePlayerForfeit = async (leavingUserId) => {
     const roomId = userToRoom[leavingUserId];
     if (!roomId) return;
@@ -39,13 +41,11 @@ const handlePlayerForfeit = async (leavingUserId) => {
     const game = activeGames[roomId];
     if (!game || game.isOver) return;
     
-    // Chỉ xử lý tính điểm nếu là PvP hoặc PvF
     if (game.type !== 'pvp' && game.type !== 'pvf') return;
     
     game.isOver = true;
     
     const winnerId = (game.p1.userId === leavingUserId) ? game.p2.userId : game.p1.userId;
-    // Nếu phòng PvF chưa đủ 2 người mà chủ phòng thoát -> Không tính là forfeit, chỉ hủy phòng
     if (!winnerId) return;
 
     const p1Id = game.p1.userId;
@@ -60,6 +60,9 @@ const handlePlayerForfeit = async (leavingUserId) => {
             const temp = calculateNewElo(u2.elo, u1.elo, false);
             eloChange = { newRatingA: temp.newRatingB, newRatingB: temp.newRatingA };
         }
+
+        const p1Diff = eloChange.newRatingA - u1.elo;
+        const p2Diff = eloChange.newRatingB - u2.elo;
         
         const updateStat = (id, elo, field) => db.execute(
             `UPDATE users SET elo = ?, total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, 
@@ -70,12 +73,12 @@ const handlePlayerForfeit = async (leavingUserId) => {
         await updateStat(p2Id, eloChange.newRatingB, winnerId === p2Id ? 'wins' : 'losses');
         
         const [gameRes] = await db.execute(
-            'INSERT INTO games (player1_id, player2_id, winner_id, game_type, end_time) VALUES (?, ?, ?, ?, NOW())', 
-            [p1Id, p2Id, winnerId, game.type] // Lưu đúng type (PvP hoặc PvF)
+            'INSERT INTO games (player1_id, player2_id, winner_id, game_type, end_time, p1_elo_change, p2_elo_change) VALUES (?, ?, ?, ?, NOW(), ?, ?)', 
+            [p1Id, p2Id, winnerId, game.type, p1Diff, p2Diff]
         );
         
-        const [[up1]] = await db.execute('SELECT id, username, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
-        const [[up2]] = await db.execute('SELECT id, username, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]);
+        const [[up1]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
+        const [[up2]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]);
         
         const resultData = { winnerId, user1: up1, user2: up2, forfeit: true, forfeitUserId: leavingUserId };
         const winnerSocket = userToSocket[winnerId];
@@ -92,46 +95,30 @@ const handlePlayerForfeit = async (leavingUserId) => {
 };
 
 io.on('connection', (socket) => {
-    // --- LOGIC MỚI: TẠO PHÒNG PVF ---
     socket.on('create_pvf', ({ user }) => {
         const rawId = generateRoomId();
-        const roomId = `pvf_${rawId}`; // Prefix pvf_ để phân biệt
-        
-        // Tạo game mới với 1 người chơi
+        const roomId = `pvf_${rawId}`;
         activeGames[roomId] = {
             p1: { userId: user.id, user: user },
-            p2: null, // Chưa có người thứ 2
+            p2: null,
             board: Array(15).fill(null).map(() => Array(15).fill(null)),
-            currentTurn: user.id, // Chủ phòng đi trước
+            currentTurn: user.id,
             moves: [],
             type: 'pvf',
             isOver: false
         };
-        
         userToRoom[user.id] = roomId;
         userToSocket[user.id] = socket.id;
         socket.join(roomId);
-
-        // Gửi mã phòng (chỉ lấy phần số) về cho client hiển thị
         socket.emit('pvf_created', { roomId: rawId });
     });
 
-    // --- LOGIC MỚI: THAM GIA PHÒNG PVF ---
     socket.on('join_pvf', ({ user, roomId }) => {
         const fullRoomId = `pvf_${roomId}`;
         const game = activeGames[fullRoomId];
+        if (!game) return socket.emit('pvf_error', "Phòng không tồn tại hoặc chủ phòng đã thoát.");
+        if (game.p2) return socket.emit('pvf_error', "Phòng đã đầy người chơi.");
 
-        // 2.2.1. Room không tồn tại
-        if (!game) {
-            return socket.emit('pvf_error', "Phòng không tồn tại hoặc chủ phòng đã thoát.");
-        }
-
-        // 2.2.3. Room đã đầy (đã có p2)
-        if (game.p2) {
-            return socket.emit('pvf_error', "Phòng đã đầy người chơi.");
-        }
-
-        // 2.2.2. Ghép cặp thành công
         game.p2 = { userId: user.id, user: user };
         userToRoom[user.id] = fullRoomId;
         userToSocket[user.id] = socket.id;
@@ -142,29 +129,24 @@ io.on('connection', (socket) => {
         socket.join(fullRoomId);
         if (p1Socket) p1Socket.join(fullRoomId);
 
-        // Phát sự kiện bắt đầu game (Reuse logic của PvP)
         io.to(p1SocketId).emit('role_assigned', { roomId: fullRoomId, piece: 'X', turn: true, opponent: game.p2.user, board: game.board });
         io.to(socket.id).emit('role_assigned', { roomId: fullRoomId, piece: 'O', turn: false, opponent: game.p1.user, board: game.board });
     });
-
 
     socket.on('join_game', ({ type, user }) => {
         if (!user) return;
         const userId = user.id;
         userToSocket[userId] = socket.id;
 
-        // Xử lý reconnect hoặc dọn dẹp phòng cũ
         if (userToRoom[userId]) {
             const oldRoomId = userToRoom[userId];
             if (!oldRoomId.startsWith(type)) {
-                // Nếu đang ở phòng PvF mà chuyển sang PvP -> Xóa phòng PvF
                 if (activeGames[oldRoomId]) delete activeGames[oldRoomId];
                 delete userToRoom[userId];
                 socket.leave(oldRoomId);
             } else {
-                // Reconnect (Chỉ áp dụng nếu game đã bắt đầu)
                 const game = activeGames[oldRoomId];
-                if (game && game.p2) { // Chỉ reconnect nếu đã đủ 2 người (với PvF/PvP)
+                if (game && game.p2) {
                     socket.join(oldRoomId);
                     socket.emit('game_ready', {
                         roomId: oldRoomId,
@@ -227,7 +209,6 @@ io.on('connection', (socket) => {
                 io.to(p2.socketId).emit('role_assigned', { roomId, piece: 'O', turn: false, opponent: p1.user, board: activeGames[roomId].board });
             }
         }
-        // Lưu ý: PvF không dùng logic auto-join ở đây, mà dùng event riêng ở trên
     });
 
     socket.on('send_message', async (data) => {
@@ -275,7 +256,6 @@ io.on('connection', (socket) => {
             const p1Id = game.p1.userId;
             const p2Id = game.p2.userId;
 
-            // Tính điểm cho cả PvP và PvF
             if (game.type === 'pvp' || game.type === 'pvf') {
                 const [[u1]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p1Id]);
                 const [[u2]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p2Id]);
@@ -286,12 +266,18 @@ io.on('connection', (socket) => {
                     eloChange = { newRatingA: temp.newRatingB, newRatingB: temp.newRatingA };
                 }
 
+                const p1Diff = eloChange.newRatingA - u1.elo;
+                const p2Diff = eloChange.newRatingB - u2.elo;
+
                 const updateStat = (id, elo, field) => db.execute(`UPDATE users SET elo = ?, total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, [elo, id]);
 
                 await updateStat(p1Id, eloChange.newRatingA, isDraw ? 'draws' : (winnerId === p1Id ? 'wins' : 'losses'));
                 await updateStat(p2Id, eloChange.newRatingB, isDraw ? 'draws' : (winnerId === p2Id ? 'wins' : 'losses'));
 
-                const [gameRes] = await db.execute('INSERT INTO games (player1_id, player2_id, winner_id, game_type, end_time) VALUES (?, ?, ?, ?, NOW())', [p1Id, p2Id, winnerId, game.type]);
+                const [gameRes] = await db.execute(
+                    'INSERT INTO games (player1_id, player2_id, winner_id, game_type, end_time, p1_elo_change, p2_elo_change) VALUES (?, ?, ?, ?, NOW(), ?, ?)', 
+                    [p1Id, p2Id, winnerId, game.type, p1Diff, p2Diff]
+                );
                 
                 for (let i = 0; i < game.moves.length; i++) {
                     const m = game.moves[i];
@@ -299,8 +285,8 @@ io.on('connection', (socket) => {
                 }
             }
 
-            const [[up1]] = await db.execute('SELECT id, username, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
-            const [[up2]] = (p2Id !== 'AI_BOT') ? await db.execute('SELECT id, username, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]) : [[{username: 'AI', id: 'AI'}]];
+            const [[up1]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
+            const [[up2]] = (p2Id !== 'AI_BOT') ? await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]) : [[{username: 'AI', id: 'AI'}]];
 
             const resultData = { winnerId, user1: up1, user2: up2 };
             io.to(roomId).emit('game_result', resultData);
@@ -317,7 +303,6 @@ io.on('connection', (socket) => {
         const roomId = userToRoom[userId];
         if (roomId) {
             socket.leave(roomId);
-            // Nếu là phòng PvF đang chờ (chưa có người thứ 2) -> Xóa phòng luôn
             if (activeGames[roomId] && activeGames[roomId].type === 'pvf' && !activeGames[roomId].p2) {
                 delete activeGames[roomId];
             }

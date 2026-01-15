@@ -56,6 +56,10 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
 );
 
+-- Thêm cột lưu biến động Elo cho Player 1 và Player 2
+ALTER TABLE games ADD COLUMN p1_elo_change INT DEFAULT 0;
+ALTER TABLE games ADD COLUMN p2_elo_change INT DEFAULT 0;
+
 -- Thêm Index để tìm kiếm nhanh hơn theo tên đối thủ và ngày tháng
 CREATE INDEX idx_game_player1 ON games(player1_id);
 CREATE INDEX idx_game_player2 ON games(player2_id);
