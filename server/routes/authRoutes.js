@@ -29,4 +29,7 @@ router.put('/avatar', auth, authController.updateAvatar);
 // Route Upload File mới
 router.post('/avatar-upload', auth, upload.single('avatar'), authController.uploadAvatarFile);
 
+// Route đổi mật khẩu
+router.put('/change-password', auth, authController.changePassword);
+
 module.exports = router;

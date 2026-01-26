@@ -100,3 +100,42 @@ exports.uploadAvatarFile = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// --- ĐỔI MẬT KHẨU ---
+exports.changePassword = async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    try {
+        // Validate input
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ msg: "Vui lòng nhập đầy đủ thông tin" });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ msg: "Mật khẩu mới phải có ít nhất 6 ký tự" });
+        }
+
+        // Get current user
+        const [[user]] = await db.execute('SELECT password FROM users WHERE id = ?', [userId]);
+        if (!user) return res.status(404).json({ msg: "Không tìm thấy người dùng" });
+
+        // Verify current password
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ msg: "Mật khẩu hiện tại không chính xác" });
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        // Update password
+        await db.execute('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId]);
+
+        res.json({ msg: "Đổi mật khẩu thành công!" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+};

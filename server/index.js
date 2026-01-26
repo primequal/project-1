@@ -127,10 +127,29 @@ const handlePlayerForfeit = async (leavingUserId) => {
             }
         }
         
+        // Create ELO notifications for rated games (forfeit)
+        if (shouldUpdateElo) {
+            console.log('=== Creating ELO notifications (forfeit) ===');
+            console.log('P1:', p1Id, 'diff:', p1Diff, 'opponent:', game.p2.user.username);
+            console.log('P2:', p2Id, 'diff:', p2Diff, 'opponent:', game.p1.user.username);
+            await createEloNotification(p1Id, p1Diff, game.p2.user.username, winnerId === p1Id);
+            await createEloNotification(p2Id, p2Diff, game.p1.user.username, winnerId === p2Id);
+            console.log('=== ELO notifications created (forfeit) ===');
+        }
+        
         const [[up1]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
         const [[up2]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]);
         
-        const resultData = { winnerId, user1: up1, user2: up2, forfeit: true, forfeitUserId: leavingUserId };
+        // Include eloChanges in result data for forfeit
+        let eloChanges = null;
+        if (shouldUpdateElo) {
+            eloChanges = {
+                winner: winnerId === p1Id ? p1Diff : p2Diff,
+                loser: winnerId === p1Id ? p2Diff : p1Diff
+            };
+        }
+        
+        const resultData = { winnerId, user1: up1, user2: up2, forfeit: true, forfeitUserId: leavingUserId, eloChanges, isRated: shouldUpdateElo };
         const winnerSocket = userToSocket[winnerId];
         if (winnerSocket) {
             io.to(winnerSocket).emit('game_result', resultData);
@@ -434,16 +453,19 @@ io.on('connection', (socket) => {
         try {
             const p1Id = game.p1.userId;
             const p2Id = game.p2.userId;
+            
+            // Track ELO changes for the result
+            let p1Diff = 0;
+            let p2Diff = 0;
+            let shouldUpdateElo = false;
 
             if (game.type === 'pvp' || game.type === 'pvf') {
                 const [[u1]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p1Id]);
                 const [[u2]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p2Id]);
                 
                 // Check if this is a rated game (PvP is always rated, PvF depends on isRated flag)
-                const shouldUpdateElo = game.type === 'pvp' || (game.type === 'pvf' && game.isRated !== false);
+                shouldUpdateElo = game.type === 'pvp' || (game.type === 'pvf' && game.isRated !== false);
                 
-                let p1Diff = 0;
-                let p2Diff = 0;
                 let newP1Elo = u1.elo;
                 let newP2Elo = u2.elo;
                 
@@ -483,15 +505,31 @@ io.on('connection', (socket) => {
                 
                 // Create ELO notifications for rated games (always create when rated, even if draw)
                 if (shouldUpdateElo) {
+                    console.log('=== Creating ELO notifications ===');
+                    console.log('P1:', p1Id, 'diff:', p1Diff, 'opponent:', game.p2.user.username);
+                    console.log('P2:', p2Id, 'diff:', p2Diff, 'opponent:', game.p1.user.username);
                     await createEloNotification(p1Id, p1Diff, game.p2.user.username, winnerId === p1Id);
                     await createEloNotification(p2Id, p2Diff, game.p1.user.username, winnerId === p2Id);
+                    console.log('=== ELO notifications created ===');
+                } else {
+                    console.log('=== Skipping ELO notifications (not rated) ===');
+                    console.log('Game type:', game.type, 'isRated:', game.isRated);
                 }
             }
 
             const [[up1]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
             const [[up2]] = (p2Id !== 'AI_BOT') ? await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]) : [[{username: 'AI', id: 'AI'}]];
 
-            const resultData = { winnerId, user1: up1, user2: up2 };
+            // Calculate ELO changes for display
+            let eloChanges = null;
+            if (shouldUpdateElo) {
+                eloChanges = {
+                    winner: winnerId === p1Id ? p1Diff : p2Diff,
+                    loser: winnerId === p1Id ? p2Diff : p1Diff
+                };
+            }
+
+            const resultData = { winnerId, user1: up1, user2: up2, eloChanges, isRated: shouldUpdateElo };
             io.to(roomId).emit('game_result', resultData);
             
             // Notify spectators
@@ -507,12 +545,123 @@ io.on('connection', (socket) => {
                 });
             }
             
-            delete activeGames[roomId];
-            delete userToRoom[p1Id];
-            if (p2Id !== 'AI_BOT') delete userToRoom[p2Id];
+            // Keep game active for potential rematch instead of deleting immediately
+            // Mark as over but don't delete yet
+            game.isOver = true;
+            game.waitingForRematch = true;
+            
+            // Set timeout to delete the game if no rematch after 60 seconds
+            setTimeout(() => {
+                if (activeGames[roomId] && activeGames[roomId].waitingForRematch) {
+                    delete activeGames[roomId];
+                    delete userToRoom[p1Id];
+                    if (p2Id !== 'AI_BOT') delete userToRoom[p2Id];
+                }
+            }, 60000);
 
         } catch (err) { console.error(err); }
     });
+
+    // ========== REMATCH EVENTS ==========
+    socket.on('request_rematch', ({ roomId }) => {
+        const game = activeGames[roomId];
+        if (!game) return;
+        
+        // Find opponent's socket
+        const userId = Object.keys(userToSocket).find(id => userToSocket[id] === socket.id);
+        const opponentId = game.p1.userId == userId ? game.p2?.userId : game.p1?.userId;
+        
+        if (opponentId) {
+            const opponentSocketId = userToSocket[opponentId];
+            if (opponentSocketId) {
+                io.to(opponentSocketId).emit('rematch_request');
+            }
+        }
+    });
+
+    socket.on('accept_rematch', ({ roomId }) => {
+        const game = activeGames[roomId];
+        if (!game) return;
+        
+        // Reset game for rematch - swap pieces
+        const oldP1 = game.p1;
+        const oldP2 = game.p2;
+        
+        game.p1 = { userId: oldP2.userId, user: oldP2.user };
+        game.p2 = { userId: oldP1.userId, user: oldP1.user };
+        game.board = Array(15).fill(null).map(() => Array(15).fill(null));
+        game.currentTurn = game.p1.userId; // X always goes first
+        game.moves = [];
+        game.isOver = false;
+        game.waitingForRematch = false;
+        
+        // Notify both players with swapped roles
+        const p1SocketId = userToSocket[game.p1.userId];
+        const p2SocketId = userToSocket[game.p2.userId];
+        
+        if (p1SocketId) {
+            io.to(p1SocketId).emit('rematch_accepted', { 
+                roomId, 
+                piece: 'X', 
+                turn: true, 
+                opponent: game.p2.user,
+                board: game.board
+            });
+        }
+        
+        if (p2SocketId) {
+            io.to(p2SocketId).emit('rematch_accepted', { 
+                roomId, 
+                piece: 'O', 
+                turn: false, 
+                opponent: game.p1.user,
+                board: game.board
+            });
+        }
+    });
+
+    socket.on('decline_rematch', ({ roomId }) => {
+        const game = activeGames[roomId];
+        if (!game) return;
+        
+        // Notify opponent that rematch was declined
+        const userId = Object.keys(userToSocket).find(id => userToSocket[id] === socket.id);
+        const opponentId = game.p1.userId == userId ? game.p2?.userId : game.p1?.userId;
+        
+        if (opponentId) {
+            const opponentSocketId = userToSocket[opponentId];
+            if (opponentSocketId) {
+                io.to(opponentSocketId).emit('rematch_declined');
+            }
+        }
+        
+        // Clean up game
+        delete activeGames[roomId];
+        delete userToRoom[game.p1?.userId];
+        delete userToRoom[game.p2?.userId];
+    });
+
+    socket.on('leave_rematch', ({ roomId }) => {
+        const game = activeGames[roomId];
+        if (!game) return;
+        
+        // Notify opponent that player left
+        const userId = Object.keys(userToSocket).find(id => userToSocket[id] === socket.id);
+        const opponentId = game.p1.userId == userId ? game.p2?.userId : game.p1?.userId;
+        
+        if (opponentId) {
+            const opponentSocketId = userToSocket[opponentId];
+            if (opponentSocketId) {
+                io.to(opponentSocketId).emit('opponent_left_rematch');
+            }
+        }
+        
+        // Clean up
+        delete activeGames[roomId];
+        delete userToRoom[game.p1?.userId];
+        delete userToRoom[game.p2?.userId];
+    });
+    // ====================================
 
     socket.on('leave_game', async (userId) => {
         await handlePlayerForfeit(userId);

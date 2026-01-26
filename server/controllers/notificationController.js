@@ -66,11 +66,14 @@ exports.markAllAsRead = async (req, res) => {
 // Helper function để tạo thông báo ELO (gọi từ server/index.js)
 exports.createEloNotification = async (userId, eloChange, opponentName, isWin) => {
     try {
+        console.log('=== createEloNotification called ===');
+        console.log('userId:', userId, 'eloChange:', eloChange, 'opponent:', opponentName, 'isWin:', isWin);
+        
         const sign = eloChange >= 0 ? '+' : '';
         const emoji = eloChange >= 0 ? '📈' : '📉';
         const result = isWin ? 'thắng' : (eloChange === 0 ? 'hòa' : 'thua');
         
-        await db.execute(
+        const [insertResult] = await db.execute(
             `INSERT INTO notifications (user_id, type, title, content, data) 
              VALUES (?, 'elo_change', ?, ?, ?)`,
             [
@@ -80,6 +83,7 @@ exports.createEloNotification = async (userId, eloChange, opponentName, isWin) =
                 JSON.stringify({ eloChange, opponentName, result })
             ]
         );
+        console.log('Notification inserted with ID:', insertResult.insertId);
     } catch (err) {
         console.error('Create ELO notification error:', err);
     }
