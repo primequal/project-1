@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import socket from './socket';
+import './styles.css';
 
 const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type }) => {
-    // Reset board về null hoàn toàn khi roomId thay đổi
     const [board, setBoard] = useState(Array(15).fill(null).map(() => Array(15).fill(null)));
     const [gameOver, setGameOver] = useState(false);
 
@@ -15,8 +15,6 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
     useEffect(() => {
         const onReceiveMove = (data) => {
             console.log('=== CLIENT: RECEIVED MOVE ===', data);
-            // Nếu nước đi này là của chính mình (cùng quân cờ), không xử lý
-            // Vì server emit 'receive_move' tới tất cả players trong room
             if (data.piece === myPiece) {
                 console.log('=== CLIENT: Ignoring own move ===');
                 return;
@@ -42,7 +40,6 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
     }, [setIsMyTurn, myPiece]);
 
     const handleClick = (r, c) => {
-        // CHẶN TUYỆT ĐỐI nếu game đã kết thúc hoặc không phải lượt
         if (board[r][c] || !isMyTurn || gameOver) return;
 
         const nb = board.map(row => [...row]);
@@ -79,20 +76,17 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
     };
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(15, 30px)', justifyContent: 'center', marginTop: '20px' }}>
+        <div className="glass-board">
             {board.map((row, r) => row.map((cell, c) => (
                 <div 
                     key={`${r}-${c}`} 
                     onClick={() => handleClick(r, c)} 
+                    className={`glass-cell ${cell === 'X' ? 'glass-cell-x glass-cell-filled' : ''} ${cell === 'O' ? 'glass-cell-o glass-cell-filled' : ''}`}
                     style={{ 
-                        width: 30, height: 30, border: '1px solid #ccc', 
-                        backgroundColor: cell==='X'?'#ffebee':cell==='O'?'#e3f2fd':'white', 
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                        cursor: (isMyTurn && !gameOver && !cell) ? 'pointer' : 'default',
-                        fontSize: '18px', fontWeight: 'bold'
+                        cursor: (isMyTurn && !gameOver && !cell) ? 'pointer' : 'default'
                     }}
                 >
-                    <span style={{ color: cell === 'X' ? 'red' : 'blue' }}>{cell}</span>
+                    {cell}
                 </div>
             )))}
         </div>

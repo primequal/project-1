@@ -68,10 +68,67 @@ CREATE INDEX idx_game_time ON games(start_time);
 -- Index để load lịch sử chat nhanh
 CREATE INDEX idx_message_game ON messages(game_id);
 
+-- 5. Bảng lời mời kết bạn (Friend Requests)
+CREATE TABLE IF NOT EXISTS friend_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    from_user_id INT NOT NULL,
+    to_user_id INT NOT NULL,
+    status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_request (from_user_id, to_user_id)
+);
+
+-- 6. Bảng bạn bè (Friendships)
+CREATE TABLE IF NOT EXISTS friendships (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user1_id INT NOT NULL,
+    user2_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_friendship (user1_id, user2_id)
+);
+
+-- 7. Bảng thông báo (Notifications)
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    type ENUM('elo_change', 'friend_request', 'friend_accepted', 'game_invite') NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content TEXT,
+    data JSON DEFAULT NULL, -- Lưu thêm dữ liệu như elo_change amount, friend_id, etc.
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Index cho friend_requests
+CREATE INDEX idx_friend_req_from ON friend_requests(from_user_id);
+CREATE INDEX idx_friend_req_to ON friend_requests(to_user_id);
+CREATE INDEX idx_friend_req_status ON friend_requests(status);
+
+-- Index cho friendships
+CREATE INDEX idx_friendship_user1 ON friendships(user1_id);
+CREATE INDEX idx_friendship_user2 ON friendships(user2_id);
+
+-- Index cho notifications
+CREATE INDEX idx_notif_user ON notifications(user_id);
+CREATE INDEX idx_notif_read ON notifications(is_read);
+CREATE INDEX idx_notif_created ON notifications(created_at);
+
 SELECT * FROM users;
 SELECT * FROM games;
 SELECT * FROM game_moves;
 SELECT * FROM messages;
+SELECT * FROM friend_requests;
+SELECT * FROM friendships;
+SELECT * FROM notifications;
 
 -- UPDATE users SET wins=0, losses=0, total_matches=0, elo=1000
 -- WHERE id>0;

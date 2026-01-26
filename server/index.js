@@ -8,7 +8,10 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
 const gameRoutes = require('./routes/gameRoutes');
+const friendRoutes = require('./routes/friendRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const { calculateNewElo } = require('./utils/eloCalculator');
+const { createEloNotification } = require('./controllers/notificationController');
 const caroAI = require('./utils/aiEngine');
 
 const app = express();
@@ -23,6 +26,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/games', gameRoutes);
+app.use('/api/friends', friendRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "http://localhost:3000" } });
@@ -55,27 +60,55 @@ const handlePlayerForfeit = async (leavingUserId) => {
         const [[u1]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p1Id]);
         const [[u2]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p2Id]);
         
-        let eloChange = calculateNewElo(u1.elo, u2.elo, false);
-        if (winnerId === p2Id) {
-            const temp = calculateNewElo(u2.elo, u1.elo, false);
-            eloChange = { newRatingA: temp.newRatingB, newRatingB: temp.newRatingA };
-        }
+        // Check if this is a rated game
+        const shouldUpdateElo = game.type === 'pvp' || (game.type === 'pvf' && game.isRated !== false);
+        
+        let p1Diff = 0;
+        let p2Diff = 0;
+        
+        if (shouldUpdateElo) {
+            let eloChange = calculateNewElo(u1.elo, u2.elo, false);
+            if (winnerId === p2Id) {
+                const temp = calculateNewElo(u2.elo, u1.elo, false);
+                eloChange = { newRatingA: temp.newRatingB, newRatingB: temp.newRatingA };
+            }
 
-        const p1Diff = eloChange.newRatingA - u1.elo;
-        const p2Diff = eloChange.newRatingB - u2.elo;
-        
-        const updateStat = (id, elo, field) => db.execute(
-            `UPDATE users SET elo = ?, total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, 
-            [elo, id]
-        );
-        
-        await updateStat(p1Id, eloChange.newRatingA, winnerId === p1Id ? 'wins' : 'losses');
-        await updateStat(p2Id, eloChange.newRatingB, winnerId === p2Id ? 'wins' : 'losses');
+            p1Diff = eloChange.newRatingA - u1.elo;
+            p2Diff = eloChange.newRatingB - u2.elo;
+            
+            const updateStat = (id, elo, field) => db.execute(
+                `UPDATE users SET elo = ?, total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, 
+                [elo, id]
+            );
+            
+            await updateStat(p1Id, eloChange.newRatingA, winnerId === p1Id ? 'wins' : 'losses');
+            await updateStat(p2Id, eloChange.newRatingB, winnerId === p2Id ? 'wins' : 'losses');
+        } else {
+            // Unrated game - only update match count
+            const updateStatNoElo = (id, field) => db.execute(
+                `UPDATE users SET total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, 
+                [id]
+            );
+            
+            await updateStatNoElo(p1Id, winnerId === p1Id ? 'wins' : 'losses');
+            await updateStatNoElo(p2Id, winnerId === p2Id ? 'wins' : 'losses');
+        }
         
         const [gameRes] = await db.execute(
             'INSERT INTO games (player1_id, player2_id, winner_id, game_type, end_time, p1_elo_change, p2_elo_change) VALUES (?, ?, ?, ?, NOW(), ?, ?)', 
             [p1Id, p2Id, winnerId, game.type, p1Diff, p2Diff]
         );
+        
+        // Save game moves for replay
+        if (game.moves && game.moves.length > 0) {
+            for (let i = 0; i < game.moves.length; i++) {
+                const m = game.moves[i];
+                await db.execute(
+                    'INSERT INTO game_moves (game_id, player_id, x_coord, y_coord, move_order) VALUES (?, ?, ?, ?, ?)', 
+                    [gameRes.insertId, m.userId === 'AI_BOT' ? 0 : m.userId, m.r, m.c, i + 1]
+                );
+            }
+        }
         
         const [[up1]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
         const [[up2]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p2Id]);
@@ -84,6 +117,20 @@ const handlePlayerForfeit = async (leavingUserId) => {
         const winnerSocket = userToSocket[winnerId];
         if (winnerSocket) {
             io.to(winnerSocket).emit('game_result', resultData);
+        }
+        
+        // Notify spectators about forfeit
+        if (game.spectators && game.spectators.length > 0) {
+            const winnerName = winnerId === p1Id ? up1.username : up2.username;
+            game.spectators.forEach(specSocketId => {
+                io.to(specSocketId).emit('spectate_game_end', { 
+                    winnerId, 
+                    winnerName,
+                    user1: up1, 
+                    user2: up2,
+                    forfeit: true
+                });
+            });
         }
     } catch (err) {
         console.error('Forfeit error:', err);
@@ -95,7 +142,7 @@ const handlePlayerForfeit = async (leavingUserId) => {
 };
 
 io.on('connection', (socket) => {
-    socket.on('create_pvf', ({ user }) => {
+    socket.on('create_pvf', ({ user, isRated = true }) => {
         const rawId = generateRoomId();
         const roomId = `pvf_${rawId}`;
         activeGames[roomId] = {
@@ -105,19 +152,32 @@ io.on('connection', (socket) => {
             currentTurn: user.id,
             moves: [],
             type: 'pvf',
-            isOver: false
+            isOver: false,
+            isRated: isRated,
+            spectators: [] // Array of spectator socket IDs
         };
         userToRoom[user.id] = roomId;
         userToSocket[user.id] = socket.id;
         socket.join(roomId);
-        socket.emit('pvf_created', { roomId: rawId });
+        socket.emit('pvf_created', { roomId: rawId, isRated: isRated });
     });
 
     socket.on('join_pvf', ({ user, roomId }) => {
         const fullRoomId = `pvf_${roomId}`;
         const game = activeGames[fullRoomId];
         if (!game) return socket.emit('pvf_error', "Phòng không tồn tại hoặc chủ phòng đã thoát.");
-        if (game.p2) return socket.emit('pvf_error', "Phòng đã đầy người chơi.");
+        
+        // Room is full - ask if user wants to spectate
+        if (game.p2) {
+            return socket.emit('pvf_full', { 
+                roomId: fullRoomId,
+                rawRoomId: roomId,
+                player1: game.p1.user,
+                player2: game.p2.user,
+                isRated: game.isRated,
+                isOver: game.isOver
+            });
+        }
 
         game.p2 = { userId: user.id, user: user };
         userToRoom[user.id] = fullRoomId;
@@ -129,8 +189,77 @@ io.on('connection', (socket) => {
         socket.join(fullRoomId);
         if (p1Socket) p1Socket.join(fullRoomId);
 
+        // Send room info including isRated to both players
+        io.to(p1SocketId).emit('room_info', { isRated: game.isRated });
+        io.to(socket.id).emit('room_info', { isRated: game.isRated });
+
         io.to(p1SocketId).emit('role_assigned', { roomId: fullRoomId, piece: 'X', turn: true, opponent: game.p2.user, board: game.board });
         io.to(socket.id).emit('role_assigned', { roomId: fullRoomId, piece: 'O', turn: false, opponent: game.p1.user, board: game.board });
+        
+        // Notify spectators that game has started
+        if (game.spectators && game.spectators.length > 0) {
+            game.spectators.forEach(specSocketId => {
+                io.to(specSocketId).emit('spectate_game_started', {
+                    player1: game.p1.user,
+                    player2: game.p2.user
+                });
+            });
+        }
+    });
+
+    // Spectate a PvF game
+    socket.on('spectate_pvf', ({ user, roomId }) => {
+        const fullRoomId = roomId.startsWith('pvf_') ? roomId : `pvf_${roomId}`;
+        const game = activeGames[fullRoomId];
+        
+        if (!game) return socket.emit('pvf_error', "Phòng không tồn tại.");
+        if (game.isOver) return socket.emit('pvf_error', "Ván đấu đã kết thúc.");
+        
+        // Add to spectators list
+        if (!game.spectators) game.spectators = [];
+        if (!game.spectators.includes(socket.id)) {
+            game.spectators.push(socket.id);
+        }
+        
+        socket.join(fullRoomId);
+        
+        // Send current game state to spectator
+        socket.emit('spectate_joined', {
+            roomId: fullRoomId,
+            player1: game.p1.user,
+            player2: game.p2 ? game.p2.user : null,
+            board: game.board,
+            currentTurn: game.currentTurn,
+            isRated: game.isRated,
+            spectatorCount: game.spectators.length
+        });
+        
+        // Notify players about new spectator
+        const p1SocketId = userToSocket[game.p1.userId];
+        if (p1SocketId) io.to(p1SocketId).emit('spectator_update', { count: game.spectators.length });
+        if (game.p2) {
+            const p2SocketId = userToSocket[game.p2.userId];
+            if (p2SocketId) io.to(p2SocketId).emit('spectator_update', { count: game.spectators.length });
+        }
+    });
+
+    // Leave spectating
+    socket.on('leave_spectate', ({ roomId }) => {
+        const fullRoomId = roomId.startsWith('pvf_') ? roomId : `pvf_${roomId}`;
+        const game = activeGames[fullRoomId];
+        
+        if (game && game.spectators) {
+            game.spectators = game.spectators.filter(id => id !== socket.id);
+            socket.leave(fullRoomId);
+            
+            // Notify players
+            const p1SocketId = userToSocket[game.p1.userId];
+            if (p1SocketId) io.to(p1SocketId).emit('spectator_update', { count: game.spectators.length });
+            if (game.p2) {
+                const p2SocketId = userToSocket[game.p2.userId];
+                if (p2SocketId) io.to(p2SocketId).emit('spectator_update', { count: game.spectators.length });
+            }
+        }
     });
 
     socket.on('join_game', ({ type, user }) => {
@@ -242,6 +371,13 @@ io.on('connection', (socket) => {
             const opponentId = (game.p1.userId === userId) ? game.p2.userId : game.p1.userId;
             game.currentTurn = opponentId;
             io.to(roomId).emit('receive_move', { r, c, piece });
+            
+            // Notify spectators with next turn info
+            if (game.spectators && game.spectators.length > 0) {
+                game.spectators.forEach(specSocketId => {
+                    io.to(specSocketId).emit('spectate_move', { r, c, piece, nextTurn: opponentId });
+                });
+            }
         }
     });
 
@@ -260,19 +396,37 @@ io.on('connection', (socket) => {
                 const [[u1]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p1Id]);
                 const [[u2]] = await db.execute('SELECT elo FROM users WHERE id = ?', [p2Id]);
                 
-                let eloChange = calculateNewElo(u1.elo, u2.elo, isDraw);
-                if (winnerId === p2Id) {
-                    const temp = calculateNewElo(u2.elo, u1.elo, isDraw);
-                    eloChange = { newRatingA: temp.newRatingB, newRatingB: temp.newRatingA };
+                // Check if this is a rated game (PvP is always rated, PvF depends on isRated flag)
+                const shouldUpdateElo = game.type === 'pvp' || (game.type === 'pvf' && game.isRated !== false);
+                
+                let p1Diff = 0;
+                let p2Diff = 0;
+                let newP1Elo = u1.elo;
+                let newP2Elo = u2.elo;
+                
+                if (shouldUpdateElo) {
+                    let eloChange = calculateNewElo(u1.elo, u2.elo, isDraw);
+                    if (winnerId === p2Id) {
+                        const temp = calculateNewElo(u2.elo, u1.elo, isDraw);
+                        eloChange = { newRatingA: temp.newRatingB, newRatingB: temp.newRatingA };
+                    }
+
+                    p1Diff = eloChange.newRatingA - u1.elo;
+                    p2Diff = eloChange.newRatingB - u2.elo;
+                    newP1Elo = eloChange.newRatingA;
+                    newP2Elo = eloChange.newRatingB;
+
+                    const updateStat = (id, elo, field) => db.execute(`UPDATE users SET elo = ?, total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, [elo, id]);
+
+                    await updateStat(p1Id, newP1Elo, isDraw ? 'draws' : (winnerId === p1Id ? 'wins' : 'losses'));
+                    await updateStat(p2Id, newP2Elo, isDraw ? 'draws' : (winnerId === p2Id ? 'wins' : 'losses'));
+                } else {
+                    // Unrated game - only update match count, not ELO
+                    const updateStatNoElo = (id, field) => db.execute(`UPDATE users SET total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, [id]);
+
+                    await updateStatNoElo(p1Id, isDraw ? 'draws' : (winnerId === p1Id ? 'wins' : 'losses'));
+                    await updateStatNoElo(p2Id, isDraw ? 'draws' : (winnerId === p2Id ? 'wins' : 'losses'));
                 }
-
-                const p1Diff = eloChange.newRatingA - u1.elo;
-                const p2Diff = eloChange.newRatingB - u2.elo;
-
-                const updateStat = (id, elo, field) => db.execute(`UPDATE users SET elo = ?, total_matches = total_matches + 1, ${field} = ${field} + 1 WHERE id = ?`, [elo, id]);
-
-                await updateStat(p1Id, eloChange.newRatingA, isDraw ? 'draws' : (winnerId === p1Id ? 'wins' : 'losses'));
-                await updateStat(p2Id, eloChange.newRatingB, isDraw ? 'draws' : (winnerId === p2Id ? 'wins' : 'losses'));
 
                 const [gameRes] = await db.execute(
                     'INSERT INTO games (player1_id, player2_id, winner_id, game_type, end_time, p1_elo_change, p2_elo_change) VALUES (?, ?, ?, ?, NOW(), ?, ?)', 
@@ -283,6 +437,12 @@ io.on('connection', (socket) => {
                     const m = game.moves[i];
                     await db.execute('INSERT INTO game_moves (game_id, player_id, x_coord, y_coord, move_order) VALUES (?, ?, ?, ?, ?)', [gameRes.insertId, m.userId === 'AI_BOT' ? 0 : m.userId, m.r, m.c, i + 1]);
                 }
+                
+                // Create ELO notifications for rated games (always create when rated, even if draw)
+                if (shouldUpdateElo) {
+                    await createEloNotification(p1Id, p1Diff, game.p2.user.username, winnerId === p1Id);
+                    await createEloNotification(p2Id, p2Diff, game.p1.user.username, winnerId === p2Id);
+                }
             }
 
             const [[up1]] = await db.execute('SELECT id, username, avatar, elo, wins, losses, draws, total_matches FROM users WHERE id = ?', [p1Id]);
@@ -290,6 +450,19 @@ io.on('connection', (socket) => {
 
             const resultData = { winnerId, user1: up1, user2: up2 };
             io.to(roomId).emit('game_result', resultData);
+            
+            // Notify spectators
+            if (game.spectators && game.spectators.length > 0) {
+                const winnerName = winnerId === p1Id ? up1.username : (winnerId === p2Id ? up2.username : null);
+                game.spectators.forEach(specSocketId => {
+                    io.to(specSocketId).emit('spectate_game_end', { 
+                        winnerId, 
+                        winnerName,
+                        user1: up1, 
+                        user2: up2 
+                    });
+                });
+            }
             
             delete activeGames[roomId];
             delete userToRoom[p1Id];

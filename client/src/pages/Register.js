@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { register } from '../api';
 import { useNavigate, Link } from 'react-router-dom';
+import '../styles.css';
 
 const Register = () => {
   const [formData, setFormData] = useState({ 
@@ -15,14 +16,13 @@ const Register = () => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    setError(''); // Xóa lỗi khi user sửa input
+    setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    // Validate phía client
     if (!formData.username.trim()) {
       return setError('Vui lòng nhập tên tài khoản');
     }
@@ -61,147 +61,107 @@ const Register = () => {
   };
 
   return (
-    <div style={containerStyle}>
-      <div style={formContainerStyle}>
-        <h2 style={{ marginBottom: '20px', color: '#333' }}>🎮 Đăng Ký Tài Khoản Caro</h2>
-        
-        {error && <div style={errorStyle}>{error}</div>}
-        
-        <form onSubmit={handleSubmit}>
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Tên tài khoản</label>
-            <input 
-              type="text"
-              name="username"
-              placeholder="Nhập tên tài khoản (ít nhất 3 ký tự)"
-              value={formData.username}
-              onChange={handleChange}
-              style={inputStyle}
-              disabled={loading}
-            />
+    <div className="app-background">
+      <div className="floating-shapes">
+        <div className="shape"></div>
+        <div className="shape"></div>
+        <div className="shape"></div>
+        <div className="shape"></div>
+      </div>
+
+      <div className="container-center">
+        <div className="glass-card" style={{ maxWidth: '450px', width: '100%' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <span style={{ fontSize: '60px' }}>📝</span>
           </div>
+          
+          <h2 className="glass-title">Đăng Ký</h2>
+          <p className="glass-subtitle">Tạo tài khoản để bắt đầu chơi Caro!</p>
+          
+          {error && (
+            <div className="glass-alert glass-alert-error">
+              ⚠️ {error}
+            </div>
+          )}
+          
+          <form onSubmit={handleSubmit}>
+            <div className="mb-md">
+              <label className="glass-label">Tên tài khoản</label>
+              <input 
+                type="text"
+                name="username"
+                placeholder="Ít nhất 3 ký tự"
+                value={formData.username}
+                onChange={handleChange}
+                className="glass-input"
+                disabled={loading}
+              />
+            </div>
 
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Email</label>
-            <input 
-              type="email"
-              name="email"
-              placeholder="Nhập email của bạn"
-              value={formData.email}
-              onChange={handleChange}
-              style={inputStyle}
+            <div className="mb-md">
+              <label className="glass-label">Email</label>
+              <input 
+                type="email"
+                name="email"
+                placeholder="example@email.com"
+                value={formData.email}
+                onChange={handleChange}
+                className="glass-input"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="mb-md">
+              <label className="glass-label">Mật khẩu</label>
+              <input 
+                type="password"
+                name="password"
+                placeholder="Ít nhất 6 ký tự"
+                value={formData.password}
+                onChange={handleChange}
+                className="glass-input"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="mb-md">
+              <label className="glass-label">Xác nhận mật khẩu</label>
+              <input 
+                type="password"
+                name="confirmPassword"
+                placeholder="Nhập lại mật khẩu"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="glass-input"
+                disabled={loading}
+              />
+            </div>
+
+            <button 
+              type="submit" 
+              className="glass-btn glass-btn-success glass-btn-full"
               disabled={loading}
-            />
-          </div>
+              style={{ marginTop: '10px', opacity: loading ? 0.7 : 1 }}
+            >
+              {loading ? (
+                <>
+                  <span className="glass-spinner" style={{ width: '20px', height: '20px', margin: '0' }}></span>
+                  Đang xử lý...
+                </>
+              ) : (
+                <>✨ Tạo tài khoản</>
+              )}
+            </button>
+          </form>
 
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Mật khẩu</label>
-            <input 
-              type="password"
-              name="password"
-              placeholder="Nhập mật khẩu (ít nhất 6 ký tự)"
-              value={formData.password}
-              onChange={handleChange}
-              style={inputStyle}
-              disabled={loading}
-            />
-          </div>
-
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Xác nhận mật khẩu</label>
-            <input 
-              type="password"
-              name="confirmPassword"
-              placeholder="Nhập lại mật khẩu"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              style={inputStyle}
-              disabled={loading}
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            style={{ ...buttonStyle, opacity: loading ? 0.7 : 1 }}
-            disabled={loading}
-          >
-            {loading ? 'Đang xử lý...' : '📝 Đăng ký'}
-          </button>
-        </form>
-
-        <p style={{ marginTop: '20px', color: '#666' }}>
-          Đã có tài khoản?{' '}
-          <Link to="/login" style={linkStyle}>Đăng nhập ngay</Link>
-        </p>
+          <p style={{ marginTop: '25px', color: 'rgba(100,100,130,0.9)' }}>
+            Đã có tài khoản?{' '}
+            <Link to="/login" className="glass-link">Đăng nhập ngay</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
-};
-
-// Styles
-const containerStyle = {
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  minHeight: '100vh',
-  backgroundColor: '#f5f5f5'
-};
-
-const formContainerStyle = {
-  backgroundColor: 'white',
-  padding: '40px',
-  borderRadius: '10px',
-  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-  width: '100%',
-  maxWidth: '400px',
-  textAlign: 'center'
-};
-
-const inputGroupStyle = {
-  marginBottom: '15px',
-  textAlign: 'left'
-};
-
-const labelStyle = {
-  display: 'block',
-  marginBottom: '5px',
-  fontWeight: 'bold',
-  color: '#555'
-};
-
-const inputStyle = {
-  width: '100%',
-  padding: '12px',
-  fontSize: '14px',
-  border: '1px solid #ddd',
-  borderRadius: '5px',
-  boxSizing: 'border-box'
-};
-
-const buttonStyle = {
-  width: '100%',
-  padding: '14px',
-  fontSize: '16px',
-  backgroundColor: '#28a745',
-  color: 'white',
-  border: 'none',
-  borderRadius: '5px',
-  cursor: 'pointer',
-  marginTop: '10px'
-};
-
-const errorStyle = {
-  backgroundColor: '#f8d7da',
-  color: '#721c24',
-  padding: '10px',
-  borderRadius: '5px',
-  marginBottom: '15px'
-};
-
-const linkStyle = {
-  color: '#007bff',
-  textDecoration: 'none',
-  fontWeight: 'bold'
 };
 
 export default Register;

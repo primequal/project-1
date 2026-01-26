@@ -1,17 +1,140 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMe, updateAvatar, uploadAvatarFile } from '../api'; // Import hàm mới
+import { getMe, updateAvatar, uploadAvatarFile, getEloHistory } from '../api';
 import socket from '../socket';
+import '../styles.css';
+import NotificationBell from '../components/NotificationBell';
+import FriendsPanel from '../components/FriendsPanel';
+
+// Simple Line Chart Component (no external library needed)
+const EloLineChart = ({ data, period }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+        Chưa có dữ liệu ELO trong khoảng thời gian này
+      </div>
+    );
+  }
+
+  const values = data.map(d => d.elo);
+  const minElo = Math.min(...values) - 20;
+  const maxElo = Math.max(...values) + 20;
+  const range = maxElo - minElo || 1;
+  
+  const width = 600;
+  const height = 250;
+  const padding = { top: 20, right: 30, bottom: 40, left: 50 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const points = data.map((d, i) => {
+    const x = padding.left + (i / (data.length - 1 || 1)) * chartWidth;
+    const y = padding.top + chartHeight - ((d.elo - minElo) / range) * chartHeight;
+    return { x, y, ...d };
+  });
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  
+  // Area fill
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${padding.top + chartHeight} L ${padding.left} ${padding.top + chartHeight} Z`;
+
+  // Y-axis labels
+  const yLabels = [];
+  const steps = 5;
+  for (let i = 0; i <= steps; i++) {
+    const value = Math.round(minElo + (range / steps) * i);
+    const y = padding.top + chartHeight - (i / steps) * chartHeight;
+    yLabels.push({ value, y });
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg width={width} height={height} style={{ display: 'block', margin: '0 auto' }}>
+        {/* Background grid */}
+        {yLabels.map((label, i) => (
+          <g key={i}>
+            <line 
+              x1={padding.left} 
+              y1={label.y} 
+              x2={width - padding.right} 
+              y2={label.y} 
+              stroke="rgba(102, 126, 234, 0.1)" 
+              strokeDasharray="5,5"
+            />
+            <text 
+              x={padding.left - 10} 
+              y={label.y + 4} 
+              fill="#666" 
+              fontSize="12" 
+              textAnchor="end"
+            >
+              {label.value}
+            </text>
+          </g>
+        ))}
+        
+        {/* Area fill */}
+        <path d={areaD} fill="url(#gradient)" opacity="0.3" />
+        
+        {/* Line */}
+        <path d={pathD} fill="none" stroke="#667eea" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        
+        {/* Data points */}
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r="6" fill="#667eea" stroke="#fff" strokeWidth="2" />
+            {/* X-axis labels - show every nth label based on data length */}
+            {(data.length <= 7 || i % Math.ceil(data.length / 7) === 0) && (
+              <text 
+                x={p.x} 
+                y={height - 10} 
+                fill="#666" 
+                fontSize="10" 
+                textAnchor="middle"
+              >
+                {p.label}
+              </text>
+            )}
+          </g>
+        ))}
+        
+        {/* Gradient definition */}
+        <defs>
+          <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#667eea" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#667eea" stopOpacity="0.1" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
   const [loading, setLoading] = useState(true);
   
-  // State Avatar
   const [showAvatarInput, setShowAvatarInput] = useState(false);
   const [newAvatarUrl, setNewAvatarUrl] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null); // State lưu file
+  const [selectedFile, setSelectedFile] = useState(null);
+  
+  // ELO Chart states
+  const [eloHistory, setEloHistory] = useState([]);
+  const [eloPeriod, setEloPeriod] = useState('month');
+  const [loadingElo, setLoadingElo] = useState(false);
+
+  const fetchEloHistory = async (period) => {
+    setLoadingElo(true);
+    try {
+      const { data } = await getEloHistory(period);
+      setEloHistory(data);
+    } catch (err) {
+      console.error('Lỗi khi lấy lịch sử ELO:', err);
+    } finally {
+      setLoadingElo(false);
+    }
+  };
 
   useEffect(() => {
     const fetchUserStats = async () => {
@@ -26,12 +149,16 @@ const Dashboard = () => {
       }
     };
     fetchUserStats();
+    fetchEloHistory(eloPeriod);
   }, []);
+  
+  useEffect(() => {
+    fetchEloHistory(eloPeriod);
+  }, [eloPeriod]);
 
   const total = user?.total_matches || 0;
   const getPercent = (value) => (total > 0 ? ((value / total) * 100).toFixed(1) : 0);
 
-  // Xử lý đổi bằng URL
   const handleUpdateAvatarUrl = async () => {
     if (!newAvatarUrl.trim()) return;
     try {
@@ -47,7 +174,6 @@ const Dashboard = () => {
     }
   };
 
-  // Xử lý đổi bằng File Upload
   const handleUpdateAvatarFile = async () => {
     if (!selectedFile) return alert("Vui lòng chọn file ảnh!");
     
@@ -68,100 +194,235 @@ const Dashboard = () => {
     }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '20px' }}><p>Đang tải thông tin...</p></div>;
+  const handleLogout = () => {
+    if (user?.id) socket.emit('leave_game', user.id);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
+  if (loading) {
+    return (
+      <div className="app-background">
+        <div className="container-center">
+          <div className="glass-card text-center">
+            <div className="glass-spinner"></div>
+            <p className="text-dark mt-md">Đang tải thông tin...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ textAlign: 'center', padding: '20px' }}>
-      <h1>Chào mừng, {user?.username}!</h1>
-      
-      {/* --- PHẦN AVATAR --- */}
-      <div style={{ marginBottom: '20px' }}>
-        <img 
-            src={user?.avatar && (user.avatar.startsWith('http') || user.avatar.startsWith('/')) ? user.avatar : "https://cdn-icons-png.flaticon.com/512/847/847969.png"} 
-            alt="Avatar" 
-            style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #007bff' }}
-        />
-        <br />
-        <button onClick={() => setShowAvatarInput(!showAvatarInput)} style={{ marginTop: '10px', cursor: 'pointer', border: 'none', background: 'transparent', color: '#007bff', textDecoration: 'underline' }}>
-            {showAvatarInput ? "Hủy" : "Đổi Avatar"}
-        </button>
-        
-        {showAvatarInput && (
-            <div style={{ marginTop: '10px', border: '1px solid #ddd', padding: '10px', borderRadius: '5px', display: 'inline-block', backgroundColor: '#f9f9f9' }}>
-                {/* Cách 1: Dán Link */}
-                <div style={{ marginBottom: '10px' }}>
-                    <strong>Cách 1: Dán Link Online</strong><br/>
-                    <input 
+    <div className="app-background">
+      <div className="floating-shapes">
+        <div className="shape"></div>
+        <div className="shape"></div>
+        <div className="shape"></div>
+        <div className="shape"></div>
+      </div>
+
+      {/* Top Right Corner - Notifications & Friends */}
+      <div style={{
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        display: 'flex',
+        gap: '15px',
+        zIndex: 1000
+      }}>
+        <FriendsPanel />
+        <NotificationBell />
+      </div>
+
+      <div className="container-center" style={{ padding: '40px 20px' }}>
+        <div style={{ width: '100%', maxWidth: '900px', position: 'relative', zIndex: 1 }}>
+          
+          {/* Header Card */}
+          <div className="glass-card text-center mb-lg">
+            <img 
+              src={user?.avatar && (user.avatar.startsWith('http') || user.avatar.startsWith('/')) 
+                ? user.avatar 
+                : "https://cdn-icons-png.flaticon.com/512/847/847969.png"} 
+              alt="Avatar" 
+              className="glass-avatar"
+            />
+            
+            <h1 className="glass-title mt-md">
+              Chào mừng, {user?.username}! 👋
+            </h1>
+            
+            <button 
+              onClick={() => setShowAvatarInput(!showAvatarInput)} 
+              className="glass-btn glass-btn-outline"
+              style={{ marginTop: '15px' }}
+            >
+              {showAvatarInput ? "❌ Hủy" : "📷 Đổi Avatar"}
+            </button>
+            
+            {showAvatarInput && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '20px' }}>
+                <div className="glass-card glass-card-sm glass-card-dark" style={{ maxWidth: '400px', width: '100%' }}>
+                  <div className="mb-md">
+                    <p className="text-dark mb-sm" style={{ fontWeight: '600' }}>🔗 Cách 1: Dán Link Online</p>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input 
                         type="text" 
                         placeholder="https://..." 
                         value={newAvatarUrl} 
                         onChange={(e) => setNewAvatarUrl(e.target.value)}
-                        style={{ padding: '5px', borderRadius: '5px', border: '1px solid #ccc', width: '200px' }}
-                    />
-                    <button onClick={handleUpdateAvatarUrl} style={{ marginLeft: '5px', padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Lưu Link</button>
-                </div>
+                        className="glass-input"
+                        style={{ flex: 1 }}
+                      />
+                      <button onClick={handleUpdateAvatarUrl} className="glass-btn glass-btn-success">
+                        Lưu
+                      </button>
+                    </div>
+                  </div>
 
-                <hr style={{ margin: '10px 0' }}/>
+                  <hr style={{ border: 'none', borderTop: '1px solid rgba(100,100,150,0.2)', margin: '15px 0' }}/>
 
-                {/* Cách 2: Upload File */}
-                <div>
-                    <strong>Cách 2: Tải ảnh lên</strong><br/>
+                  <div>
+                    <p className="text-dark mb-sm" style={{ fontWeight: '600' }}>📁 Cách 2: Tải ảnh lên</p>
                     <input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={(e) => setSelectedFile(e.target.files[0])}
-                        style={{ marginTop: '5px' }}
+                      type="file" 
+                      accept="image/*"
+                      onChange={(e) => setSelectedFile(e.target.files[0])}
+                      style={{ color: '#333', marginBottom: '10px' }}
                     />
                     <br/>
-                    <button onClick={handleUpdateAvatarFile} style={{ marginTop: '5px', padding: '5px 10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Upload & Lưu</button>
+                    <button onClick={handleUpdateAvatarFile} className="glass-btn glass-btn-info">
+                      Upload & Lưu
+                    </button>
+                  </div>
                 </div>
-            </div>
-        )}
-      </div>
-      {/* ------------------- */}
-      
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
-        <div style={statBox}>
-          <h3>Elo hiện tại</h3>
-          <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#007bff' }}>{user?.elo || 1000}</p>
-        </div>
-
-        <div style={statBox}>
-          <h3>Tỉ lệ thắng</h3>
-          <p style={{ fontSize: '28px', fontWeight: 'bold', color: 'green' }}>{getPercent(user?.wins || 0)}%</p>
-          <p style={{ fontSize: '14px', color: '#666' }}>Tổng: {total} ván</p>
-        </div>
-
-        <div style={statBox}>
-          <h3>Chi tiết kết quả</h3>
-          <div style={{ textAlign: 'left', display: 'inline-block' }}>
-            <p style={{ color: 'green' }}>● Thắng: <strong>{user?.wins || 0}</strong> ({getPercent(user?.wins || 0)}%)</p>
-            <p style={{ color: 'red' }}>● Thua: <strong>{user?.losses || 0}</strong> ({getPercent(user?.losses || 0)}%)</p>
-            <p style={{ color: 'gray' }}>● Hòa: <strong>{user?.draws || 0}</strong> ({getPercent(user?.draws || 0)}%)</p>
+                
+                <button 
+                  onClick={() => setShowAvatarInput(false)} 
+                  className="glass-btn glass-btn-danger"
+                  style={{ marginTop: '15px' }}
+                >
+                  ❌ Hủy thay đổi
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Stats Cards */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
+            <div className="glass-stat-box">
+              <h3>🏆 Elo hiện tại</h3>
+              <p className="glass-stat-value" style={{ color: '#ffd700' }}>{user?.elo || 1000}</p>
+            </div>
+
+            <div className="glass-stat-box">
+              <h3>📊 Tỉ lệ thắng</h3>
+              <p className="glass-stat-value" style={{ color: '#38ef7d' }}>{getPercent(user?.wins || 0)}%</p>
+              <p className="glass-stat-label">Tổng: {total} ván</p>
+            </div>
+
+            <div className="glass-stat-box" style={{ minWidth: '220px' }}>
+              <h3>📈 Chi tiết kết quả</h3>
+              <div style={{ textAlign: 'left', marginTop: '10px' }}>
+                <p style={{ color: '#38ef7d', margin: '5px 0' }}>
+                  ✅ Thắng: <strong>{user?.wins || 0}</strong> ({getPercent(user?.wins || 0)}%)
+                </p>
+                <p style={{ color: '#ff5252', margin: '5px 0' }}>
+                  ❌ Thua: <strong>{user?.losses || 0}</strong> ({getPercent(user?.losses || 0)}%)
+                </p>
+                <p style={{ color: '#888', margin: '5px 0' }}>
+                  🤝 Hòa: <strong>{user?.draws || 0}</strong> ({getPercent(user?.draws || 0)}%)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ELO History Chart */}
+          <div className="glass-chart-container mb-lg">
+            <h3 className="glass-chart-title">📊 Biến động ELO</h3>
+            
+            <div className="glass-chart-tabs">
+              <button 
+                className={`glass-chart-tab ${eloPeriod === 'week' ? 'active' : ''}`}
+                onClick={() => setEloPeriod('week')}
+              >
+                Tuần
+              </button>
+              <button 
+                className={`glass-chart-tab ${eloPeriod === 'month' ? 'active' : ''}`}
+                onClick={() => setEloPeriod('month')}
+              >
+                Tháng
+              </button>
+              <button 
+                className={`glass-chart-tab ${eloPeriod === 'year' ? 'active' : ''}`}
+                onClick={() => setEloPeriod('year')}
+              >
+                Năm
+              </button>
+            </div>
+            
+            {loadingElo ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div className="glass-spinner"></div>
+              </div>
+            ) : (
+              <EloLineChart data={eloHistory} period={eloPeriod} />
+            )}
+          </div>
+
+          {/* Game Mode Buttons */}
+          <div className="glass-card text-center">
+            <h3 className="text-dark mb-lg" style={{ fontSize: '1.5rem' }}>🎮 Chọn chế độ chơi</h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
+              <button 
+                onClick={() => navigate('/game/pvp')} 
+                className="glass-btn glass-btn-primary"
+                style={{ width: '280px' }}
+              >
+                ⚔️ Chơi PvP (Ghép cặp)
+              </button>
+              
+              <button 
+                onClick={() => navigate('/game/pve')} 
+                className="glass-btn glass-btn-info"
+                style={{ width: '280px' }}
+              >
+                🤖 Chơi PvE (Với Máy)
+              </button>
+              
+              <button 
+                onClick={() => navigate('/game/pvf')} 
+                className="glass-btn glass-btn-success"
+                style={{ width: '280px' }}
+              >
+                👥 Chơi PvF (Với Bạn bè)
+              </button>
+              
+              <button 
+                onClick={() => navigate('/history')} 
+                className="glass-btn glass-btn-secondary"
+                style={{ width: '280px' }}
+              >
+                📜 Xem Lịch Sử & Profile
+              </button>
+              
+              <button 
+                onClick={handleLogout} 
+                className="glass-btn glass-btn-danger"
+                style={{ width: '280px', marginTop: '15px' }}
+              >
+                🔓 Đăng xuất
+              </button>
+            </div>
+          </div>
+
         </div>
-      </div>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
-        <button onClick={() => navigate('/game/pvp')} style={btnStyle}>Chơi PvP (Ghép cặp)</button>
-        <button onClick={() => navigate('/game/pve')} style={btnStyle}>Chơi PvE (Với Máy)</button>
-        <button onClick={() => navigate('/game/pvf')} style={btnStyle}>Chơi PvF (Với Bạn bè)</button>
-        <button onClick={() => navigate('/history')} style={{ ...btnStyle, backgroundColor: '#6c757d' }}>Xem Lịch Sử & Profile</button>
-        
-        <button onClick={() => {
-            if (user?.id) socket.emit('leave_game', user.id);
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            navigate('/login');
-        }} style={{ ...btnStyle, backgroundColor: '#dc3545', marginTop: '20px' }}>
-          🚪 Đăng xuất
-        </button>
       </div>
     </div>
   );
 };
-
-const statBox = { border: '1px solid #ddd', padding: '15px', borderRadius: '8px', minWidth: '150px' };
-const btnStyle = { padding: '12px 30px', fontSize: '16px', cursor: 'pointer', width: '250px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' };
 
 export default Dashboard;
