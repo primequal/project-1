@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMe, updateAvatar, uploadAvatarFile, getEloHistory } from '../api';
+import { getMe, updateAvatar, uploadAvatarFile, getEloHistory, changePassword } from '../api';
 import socket from '../socket';
 import '../styles.css';
 import NotificationBell from '../components/NotificationBell';
@@ -124,6 +124,15 @@ const Dashboard = () => {
   const [eloPeriod, setEloPeriod] = useState('month');
   const [loadingElo, setLoadingElo] = useState(false);
 
+  // Change Password states
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+
   const fetchEloHistory = async (period) => {
     setLoadingElo(true);
     try {
@@ -150,6 +159,11 @@ const Dashboard = () => {
     };
     fetchUserStats();
     fetchEloHistory(eloPeriod);
+    
+    // Set user online status
+    if (user?.id) {
+      socket.emit('user_online', { userId: user.id });
+    }
   }, []);
   
   useEffect(() => {
@@ -191,6 +205,43 @@ const Dashboard = () => {
     } catch (err) {
         console.error(err);
         alert("Lỗi upload ảnh");
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Vui lòng điền đầy đủ thông tin');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('Mật khẩu mới phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setPasswordSuccess('Đổi mật khẩu thành công!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowChangePassword(false);
+        setPasswordSuccess('');
+      }, 2000);
+    } catch (err) {
+      setPasswordError(err.response?.data?.msg || 'Lỗi đổi mật khẩu');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -256,9 +307,17 @@ const Dashboard = () => {
             <button 
               onClick={() => setShowAvatarInput(!showAvatarInput)} 
               className="glass-btn glass-btn-outline"
-              style={{ marginTop: '15px' }}
+              style={{ marginTop: '15px', marginRight: '10px' }}
             >
               {showAvatarInput ? "❌ Hủy" : "📷 Đổi Avatar"}
+            </button>
+            
+            <button 
+              onClick={() => setShowChangePassword(!showChangePassword)} 
+              className="glass-btn glass-btn-outline"
+              style={{ marginTop: '15px' }}
+            >
+              {showChangePassword ? "❌ Hủy" : "🔑 Đổi Mật Khẩu"}
             </button>
             
             {showAvatarInput && (
@@ -304,6 +363,106 @@ const Dashboard = () => {
                   style={{ marginTop: '15px' }}
                 >
                   ❌ Hủy thay đổi
+                </button>
+              </div>
+            )}
+
+            {showChangePassword && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '20px' }}>
+                <div className="glass-card glass-card-sm glass-card-dark" style={{ maxWidth: '400px', width: '100%' }}>
+                  <h4 className="text-dark mb-md" style={{ textAlign: 'center' }}>🔑 Đổi Mật Khẩu</h4>
+                  
+                  {passwordError && (
+                    <div style={{ 
+                      background: 'rgba(229, 62, 62, 0.15)', 
+                      color: '#e53e3e', 
+                      padding: '10px', 
+                      borderRadius: '8px', 
+                      marginBottom: '15px',
+                      textAlign: 'center'
+                    }}>
+                      {passwordError}
+                    </div>
+                  )}
+                  
+                  {passwordSuccess && (
+                    <div style={{ 
+                      background: 'rgba(56, 161, 105, 0.15)', 
+                      color: '#38a169', 
+                      padding: '10px', 
+                      borderRadius: '8px', 
+                      marginBottom: '15px',
+                      textAlign: 'center'
+                    }}>
+                      {passwordSuccess}
+                    </div>
+                  )}
+                  
+                  <div className="mb-md">
+                    <label className="text-dark mb-sm" style={{ display: 'block', fontWeight: '500' }}>
+                      Mật khẩu hiện tại
+                    </label>
+                    <input 
+                      type="password" 
+                      placeholder="Nhập mật khẩu hiện tại" 
+                      value={currentPassword} 
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="glass-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  
+                  <div className="mb-md">
+                    <label className="text-dark mb-sm" style={{ display: 'block', fontWeight: '500' }}>
+                      Mật khẩu mới
+                    </label>
+                    <input 
+                      type="password" 
+                      placeholder="Nhập mật khẩu mới (ít nhất 6 ký tự)" 
+                      value={newPassword} 
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="glass-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  
+                  <div className="mb-md">
+                    <label className="text-dark mb-sm" style={{ display: 'block', fontWeight: '500' }}>
+                      Xác nhận mật khẩu mới
+                    </label>
+                    <input 
+                      type="password" 
+                      placeholder="Nhập lại mật khẩu mới" 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="glass-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={handleChangePassword} 
+                    className="glass-btn glass-btn-success"
+                    style={{ width: '100%' }}
+                    disabled={changingPassword}
+                  >
+                    {changingPassword ? '⏳ Đang xử lý...' : '✅ Xác nhận đổi mật khẩu'}
+                  </button>
+                </div>
+                
+                <button 
+                  onClick={() => {
+                    setShowChangePassword(false);
+                    setPasswordError('');
+                    setPasswordSuccess('');
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                  }} 
+                  className="glass-btn glass-btn-danger"
+                  style={{ marginTop: '15px' }}
+                >
+                  ❌ Hủy
                 </button>
               </div>
             )}
@@ -407,6 +566,18 @@ const Dashboard = () => {
                 style={{ width: '280px' }}
               >
                 📜 Xem Lịch Sử & Profile
+              </button>
+              
+              <button 
+                onClick={() => navigate('/leaderboard')} 
+                className="glass-btn"
+                style={{ 
+                  width: '280px',
+                  background: 'linear-gradient(135deg, #ffd700 0%, #ff9500 100%)',
+                  color: '#333'
+                }}
+              >
+                🏆 Bảng Xếp Hạng
               </button>
               
               <button 

@@ -13,8 +13,14 @@ CREATE TABLE IF NOT EXISTS users (
     wins INT DEFAULT 0,
     losses INT DEFAULT 0,
     draws INT DEFAULT 0,
+    is_online BOOLEAN DEFAULT FALSE,
+    last_online TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Thêm columns nếu chạy lại
+-- ALTER TABLE users ADD COLUMN is_online BOOLEAN DEFAULT FALSE;
+-- ALTER TABLE users ADD COLUMN last_online TIMESTAMP NULL;
 
 -- 2. Bảng quản lý ván đấu (Games)
 CREATE TABLE IF NOT EXISTS games (

@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   searchUsers, 
-  sendFriendRequest, 
+  sendFriendRequest,
+  undoFriendRequest,
   getFriendRequests, 
   acceptFriendRequest, 
   rejectFriendRequest,
   getFriends,
   removeFriend 
 } from '../api';
+import socket from '../socket';
 
 const FriendsPanel = () => {
+  const navigate = useNavigate();
   const [showPanel, setShowPanel] = useState(false);
   const [activeTab, setActiveTab] = useState('friends'); // 'friends', 'requests', 'search'
   const [friends, setFriends] = useState([]);
@@ -18,12 +22,26 @@ const FriendsPanel = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
   const panelRef = useRef(null);
 
   const fetchFriends = async () => {
     try {
       const { data } = await getFriends();
       setFriends(data);
+      // Update online status from friends data
+      const onlineSet = new Set();
+      data.forEach(f => {
+        if (f.is_online) onlineSet.add(f.id);
+      });
+      setOnlineUsers(prev => {
+        const newSet = new Set(prev);
+        data.forEach(f => {
+          if (f.is_online) newSet.add(f.id);
+          else newSet.delete(f.id);
+        });
+        return newSet;
+      });
     } catch (err) {
       console.error('Lỗi lấy bạn bè:', err);
     }
@@ -44,6 +62,25 @@ const FriendsPanel = () => {
       fetchRequests();
     }
   }, [showPanel]);
+
+  // Listen for online status changes
+  useEffect(() => {
+    const handleStatusChange = ({ userId, isOnline }) => {
+      setOnlineUsers(prev => {
+        const newSet = new Set(prev);
+        if (isOnline) newSet.add(userId);
+        else newSet.delete(userId);
+        return newSet;
+      });
+      // Also update friends list
+      setFriends(prev => prev.map(f => 
+        f.id === userId ? { ...f, is_online: isOnline } : f
+      ));
+    };
+    
+    socket.on('user_status_change', handleStatusChange);
+    return () => socket.off('user_status_change', handleStatusChange);
+  }, []);
 
   // Close panel when clicking outside
   useEffect(() => {
@@ -89,6 +126,27 @@ const FriendsPanel = () => {
     }
   };
 
+  const handleUndoRequest = async (toUserId) => {
+    try {
+      await undoFriendRequest(toUserId);
+      setSearchResults(prev => 
+        prev.map(u => u.id === toUserId ? { ...u, friendStatus: 'none' } : u)
+      );
+      setMessage('Đã hủy lời mời kết bạn');
+    } catch (err) {
+      // Edge case: request đã được accept, người này đã là bạn
+      if (err.response?.data?.alreadyFriends) {
+        setSearchResults(prev => 
+          prev.map(u => u.id === toUserId ? { ...u, friendStatus: 'friend' } : u)
+        );
+        fetchFriends(); // Refresh friends list
+        setMessage('Người này đã là bạn bè của bạn rồi!');
+      } else {
+        setMessage(err.response?.data?.error || 'Lỗi hủy lời mời');
+      }
+    }
+  };
+
   const handleAcceptRequest = async (requestId) => {
     try {
       await acceptFriendRequest(requestId);
@@ -121,12 +179,75 @@ const FriendsPanel = () => {
     }
   };
 
+  const handleInviteFriend = (friend) => {
+    // Create a room first, then invite
+    const user = JSON.parse(localStorage.getItem('user'));
+    
+    // Emit create room with default time control of 60 seconds
+    socket.emit('create_pvf', { user, isRated: true, timeControl: 60 });
+    
+    // Listen for room created, then invite and redirect
+    const onRoomCreated = (data) => {
+      const roomId = data.roomId;
+      // Send invite to friend
+      socket.emit('invite_to_pvf', { 
+        fromUser: user, 
+        toUserId: friend.id, 
+        roomId 
+      });
+      
+      // Store the created room info in sessionStorage so Game.js can use it
+      sessionStorage.setItem('pvf_invited_room', JSON.stringify({
+        roomId: roomId,
+        invitedFriend: friend.username
+      }));
+      
+      // Close panel and show message
+      setShowPanel(false);
+      
+      // Navigate to game page - Game.js will detect the room was already created
+      navigate('/game/pvf');
+      
+      socket.off('pvf_created', onRoomCreated);
+    };
+    
+    socket.once('pvf_created', onRoomCreated);
+  };
+
+  // Online status indicator component
+  const OnlineIndicator = ({ isOnline }) => (
+    <span style={{
+      display: 'inline-block',
+      width: '10px',
+      height: '10px',
+      borderRadius: '50%',
+      background: isOnline ? '#38ef7d' : '#888',
+      marginRight: '6px',
+      boxShadow: isOnline ? '0 0 6px #38ef7d' : 'none'
+    }} title={isOnline ? 'Đang online' : 'Offline'} />
+  );
+
   const getStatusButton = (user) => {
     switch (user.friendStatus) {
       case 'friend':
         return <span style={{ color: '#38ef7d', fontSize: '12px' }}>✅ Bạn bè</span>;
       case 'request_sent':
-        return <span style={{ color: '#667eea', fontSize: '12px' }}>📤 Đã gửi</span>;
+        return (
+          <button
+            onClick={() => handleUndoRequest(user.id)}
+            style={{
+              background: 'linear-gradient(135deg, #718096, #4a5568)',
+              color: 'white',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '15px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            ↩ Hủy gửi
+          </button>
+        );
       case 'request_received':
         return <span style={{ color: '#ffd700', fontSize: '12px' }}>📥 Chờ phản hồi</span>;
       default:
@@ -282,31 +403,69 @@ const FriendsPanel = () => {
                     gap: '12px',
                     borderBottom: '1px solid rgba(200, 200, 220, 0.2)'
                   }}>
-                    <img
-                      src={friend.avatar?.startsWith('http') || friend.avatar?.startsWith('/') 
-                        ? friend.avatar 
-                        : "https://cdn-icons-png.flaticon.com/512/847/847969.png"}
-                      alt={friend.username}
-                      style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '600', color: '#2d3748' }}>{friend.username}</div>
-                      <div style={{ fontSize: '12px', color: '#888' }}>ELO: {friend.elo}</div>
+                    <div style={{ position: 'relative' }}>
+                      <img
+                        src={friend.avatar?.startsWith('http') || friend.avatar?.startsWith('/') 
+                          ? friend.avatar 
+                          : "https://cdn-icons-png.flaticon.com/512/847/847969.png"}
+                        alt={friend.username}
+                        style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                      {/* Online indicator on avatar */}
+                      <span style={{
+                        position: 'absolute',
+                        bottom: '0',
+                        right: '0',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        background: friend.is_online || onlineUsers.has(friend.id) ? '#38ef7d' : '#888',
+                        border: '2px solid white',
+                        boxShadow: friend.is_online || onlineUsers.has(friend.id) ? '0 0 6px #38ef7d' : 'none'
+                      }} />
                     </div>
-                    <button
-                      onClick={() => handleRemoveFriend(friend.id)}
-                      style={{
-                        background: 'rgba(235, 51, 73, 0.1)',
-                        color: '#eb3349',
-                        border: 'none',
-                        padding: '6px 10px',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      ✕
-                    </button>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#2d3748' }}>
+                        {friend.username}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#888' }}>
+                        ELO: {friend.elo} • {friend.is_online || onlineUsers.has(friend.id) ? <span style={{ color: '#38ef7d' }}>Online</span> : 'Offline'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {/* Invite button - only show if online */}
+                      {(friend.is_online || onlineUsers.has(friend.id)) && (
+                        <button
+                          onClick={() => handleInviteFriend(friend)}
+                          title="Mời chơi"
+                          style={{
+                            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🎮
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveFriend(friend.id)}
+                        style={{
+                          background: 'rgba(235, 51, 73, 0.1)',
+                          color: '#eb3349',
+                          border: 'none',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 ))
               )

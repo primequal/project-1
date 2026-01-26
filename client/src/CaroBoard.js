@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import socket from './socket';
+import { useSound } from './hooks/useSound';
 import './styles.css';
 
 const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type }) => {
     const [board, setBoard] = useState(Array(15).fill(null).map(() => Array(15).fill(null)));
     const [gameOver, setGameOver] = useState(false);
+    const { playMoveSound } = useSound();
 
     useEffect(() => {
         if (initialBoard) setBoard(initialBoard);
@@ -19,6 +21,9 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
                 console.log('=== CLIENT: Ignoring own move ===');
                 return;
             }
+            
+            // Play sound for opponent's move
+            playMoveSound();
             
             setBoard(prev => {
                 const nb = prev.map(r => [...r]);
@@ -37,10 +42,13 @@ const CaroBoard = ({ roomId, myPiece, isMyTurn, setIsMyTurn, initialBoard, type 
             console.log('=== CLIENT: Removing receive_move listener ===');
             socket.off('receive_move', onReceiveMove);
         };
-    }, [setIsMyTurn, myPiece]);
+    }, [setIsMyTurn, myPiece, playMoveSound]);
 
     const handleClick = (r, c) => {
         if (board[r][c] || !isMyTurn || gameOver) return;
+
+        // Play sound for my move
+        playMoveSound();
 
         const nb = board.map(row => [...row]);
         nb[r][c] = myPiece;

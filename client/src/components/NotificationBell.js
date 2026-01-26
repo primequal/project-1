@@ -1,13 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../api';
+import socket from '../socket';
+import { useSound } from '../hooks/useSound';
 
 const NotificationBell = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
   const dropdownRef = useRef(null);
+  const prevUnreadCountRef = useRef(0);
+  const { playNotificationSound } = useSound();
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  // Play sound when new notifications arrive
+  useEffect(() => {
+    if (unreadCount > prevUnreadCountRef.current) {
+      playNotificationSound();
+    }
+    prevUnreadCountRef.current = unreadCount;
+  }, [unreadCount, playNotificationSound]);
 
   const fetchNotifications = async () => {
     setLoading(true);
@@ -26,6 +41,17 @@ const NotificationBell = () => {
     // Refresh every 30 seconds
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Listen for real-time game invites
+  useEffect(() => {
+    const handleGameInvite = (data) => {
+      // Refresh notifications to show the new invite
+      fetchNotifications();
+    };
+    
+    socket.on('game_invite_received', handleGameInvite);
+    return () => socket.off('game_invite_received', handleGameInvite);
   }, []);
 
   // Close dropdown when clicking outside
@@ -48,6 +74,34 @@ const NotificationBell = () => {
     } catch (err) {
       console.error('Lỗi đánh dấu đã đọc:', err);
     }
+  };
+
+  const handleNotificationClick = async (notif) => {
+    await handleMarkAsRead(notif.id);
+    
+    // If it's a game invite, save roomId and navigate to PvF page
+    if (notif.type === 'game_invite' && notif.data?.roomId) {
+      // Store the room info for Game.js to use (timeControl is always 60 for invites)
+      sessionStorage.setItem('pvf_join_room', notif.data.roomId);
+      setShowDropdown(false);
+      navigate('/game/pvf');
+    }
+  };
+
+  const handleCopyRoomId = (e, roomId) => {
+    e.stopPropagation(); // Prevent triggering the notification click
+    navigator.clipboard.writeText(roomId);
+    setCopiedId(roomId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleJoinRoom = (e, notif) => {
+    e.stopPropagation();
+    handleMarkAsRead(notif.id);
+    // Store the room info for Game.js to use (timeControl is always 60 for invites)
+    sessionStorage.setItem('pvf_join_room', notif.data.roomId);
+    setShowDropdown(false);
+    navigate('/game/pvf');
   };
 
   const handleMarkAllRead = async () => {
@@ -192,7 +246,7 @@ const NotificationBell = () => {
               notifications.map(notif => (
                 <div
                   key={notif.id}
-                  onClick={() => handleMarkAsRead(notif.id)}
+                  onClick={() => handleNotificationClick(notif)}
                   style={{
                     padding: '15px 20px',
                     borderBottom: '1px solid rgba(200, 200, 220, 0.3)',
@@ -216,7 +270,63 @@ const NotificationBell = () => {
                       <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>
                         {notif.content}
                       </div>
-                      <div style={{ fontSize: '11px', color: '#999' }}>
+                      
+                      {/* Game Invite Actions - Room ID + Copy + Join buttons */}
+                      {notif.type === 'game_invite' && notif.data?.roomId && (
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px',
+                          marginTop: '8px',
+                          flexWrap: 'wrap'
+                        }}>
+                          <span style={{
+                            background: 'rgba(102, 126, 234, 0.15)',
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            color: '#667eea',
+                            fontWeight: '600',
+                            fontFamily: 'monospace'
+                          }}>
+                            ID: {notif.data.roomId}
+                          </span>
+                          <button
+                            onClick={(e) => handleCopyRoomId(e, notif.data.roomId)}
+                            style={{
+                              background: copiedId === notif.data.roomId 
+                                ? 'linear-gradient(135deg, #38ef7d, #11998e)' 
+                                : 'rgba(102, 126, 234, 0.2)',
+                              border: 'none',
+                              padding: '4px 10px',
+                              borderRadius: '8px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              color: copiedId === notif.data.roomId ? 'white' : '#667eea',
+                              fontWeight: '500'
+                            }}
+                          >
+                            {copiedId === notif.data.roomId ? '✓ Đã copy' : '📋 Copy ID'}
+                          </button>
+                          <button
+                            onClick={(e) => handleJoinRoom(e, notif)}
+                            style={{
+                              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                              border: 'none',
+                              padding: '4px 12px',
+                              borderRadius: '8px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              color: 'white',
+                              fontWeight: '500'
+                            }}
+                          >
+                            Tham gia
+                          </button>
+                        </div>
+                      )}
+                      
+                      <div style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>
                         {formatTime(notif.created_at)}
                       </div>
                     </div>

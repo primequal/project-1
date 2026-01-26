@@ -7,6 +7,7 @@ import Game from './pages/Game';
 // client/src/App.js
 import History from './pages/History';
 import Replay from './pages/Replay';
+import Leaderboard from './pages/Leaderboard';
 
 function App() {
   // Dùng state để lưu token, khởi tạo bằng giá trị trong localStorage
@@ -43,6 +44,11 @@ function App() {
         <Route 
           path="/replay/:id" 
           element={token ? <Replay /> : <Navigate to="/login" />} 
+        />
+
+        <Route 
+          path="/leaderboard" 
+          element={token ? <Leaderboard /> : <Navigate to="/login" />} 
         />
 
         <Route path="*" element={<Navigate to="/login" />} />
