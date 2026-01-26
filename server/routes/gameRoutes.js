@@ -9,6 +9,9 @@ router.get('/history', auth, gameController.getHistory);
 // Đường dẫn: GET /api/games/elo-history
 router.get('/elo-history', auth, gameController.getEloHistory);
 
+// Đường dẫn: GET /api/games/leaderboard
+router.get('/leaderboard', auth, gameController.getLeaderboard);
+
 // Đường dẫn: GET /api/games/:id/moves
 router.get('/:id/moves', auth, gameController.getGameMoves);
 

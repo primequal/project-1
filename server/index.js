@@ -11,7 +11,7 @@ const gameRoutes = require('./routes/gameRoutes');
 const friendRoutes = require('./routes/friendRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { calculateNewElo } = require('./utils/eloCalculator');
-const { createEloNotification } = require('./controllers/notificationController');
+const { createEloNotification, createGameInviteNotification } = require('./controllers/notificationController');
 const caroAI = require('./utils/aiEngine');
 
 const app = express();
@@ -35,9 +35,26 @@ const io = new Server(server, { cors: { origin: "http://localhost:3000" } });
 let pvpQueue = [];
 let activeGames = {};
 let userToRoom = {};
-let userToSocket = {}; 
+let userToSocket = {};
+let onlineUsers = new Set(); // Track online user IDs
 
 const generateRoomId = () => Math.floor(10000 + Math.random() * 90000).toString();
+
+// Update user online status in database
+const setUserOnlineStatus = async (userId, isOnline) => {
+    try {
+        if (isOnline) {
+            await db.execute('UPDATE users SET is_online = TRUE WHERE id = ?', [userId]);
+        } else {
+            await db.execute('UPDATE users SET is_online = FALSE, last_online = NOW() WHERE id = ?', [userId]);
+        }
+    } catch (err) {
+        // Ignore error if columns don't exist yet
+        if (!err.message.includes('Unknown column')) {
+            console.error('Update online status error:', err);
+        }
+    }
+};
 
 const handlePlayerForfeit = async (leavingUserId) => {
     const roomId = userToRoom[leavingUserId];
@@ -142,6 +159,32 @@ const handlePlayerForfeit = async (leavingUserId) => {
 };
 
 io.on('connection', (socket) => {
+    // Handle user coming online
+    socket.on('user_online', async ({ userId }) => {
+        if (userId) {
+            onlineUsers.add(userId);
+            userToSocket[userId] = socket.id;
+            await setUserOnlineStatus(userId, true);
+            // Broadcast to all clients that this user is online
+            io.emit('user_status_change', { userId, isOnline: true });
+        }
+    });
+
+    // Handle invite friend to PvF
+    socket.on('invite_to_pvf', async ({ fromUser, toUserId, roomId }) => {
+        // Create notification for the invited user
+        await createGameInviteNotification(toUserId, fromUser.username, roomId);
+        
+        // If user is online, send real-time notification
+        const toUserSocketId = userToSocket[toUserId];
+        if (toUserSocketId) {
+            io.to(toUserSocketId).emit('game_invite_received', {
+                fromUser,
+                roomId
+            });
+        }
+    });
+
     socket.on('create_pvf', ({ user, isRated = true }) => {
         const rawId = generateRoomId();
         const roomId = `pvf_${rawId}`;
@@ -495,6 +538,12 @@ io.on('connection', (socket) => {
         }
         if (disconnectedUserId) {
             await handlePlayerForfeit(parseInt(disconnectedUserId));
+            
+            // Update online status
+            onlineUsers.delete(parseInt(disconnectedUserId));
+            await setUserOnlineStatus(parseInt(disconnectedUserId), false);
+            io.emit('user_status_change', { userId: parseInt(disconnectedUserId), isOnline: false });
+            
             delete userToSocket[disconnectedUserId];
             delete userToRoom[disconnectedUserId];
         }

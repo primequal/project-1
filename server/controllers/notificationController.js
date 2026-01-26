@@ -84,3 +84,21 @@ exports.createEloNotification = async (userId, eloChange, opponentName, isWin) =
         console.error('Create ELO notification error:', err);
     }
 };
+
+// Helper function để tạo thông báo mời chơi game (gọi từ server/index.js)
+exports.createGameInviteNotification = async (toUserId, fromUsername, roomId) => {
+    try {
+        await db.execute(
+            `INSERT INTO notifications (user_id, type, title, content, data) 
+             VALUES (?, 'game_invite', ?, ?, ?)`,
+            [
+                toUserId,
+                `🎮 ${fromUsername} mời bạn chơi!`,
+                `${fromUsername} đã mời bạn vào phòng chơi. Nhấn để tham gia!`,
+                JSON.stringify({ fromUsername, roomId })
+            ]
+        );
+    } catch (err) {
+        console.error('Create game invite notification error:', err);
+    }
+};

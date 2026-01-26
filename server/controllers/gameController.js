@@ -123,3 +123,31 @@ exports.getEloHistory = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// Leaderboard - Top 20 players by ELO
+exports.getLeaderboard = async (req, res) => {
+    try {
+        // Try with is_online first, fallback without it if column doesn't exist
+        let players;
+        try {
+            [players] = await db.execute(`
+                SELECT id, username, avatar, elo, wins, losses, draws, total_matches, is_online
+                FROM users
+                ORDER BY elo DESC
+                LIMIT 20
+            `);
+        } catch (columnErr) {
+            // Fallback if is_online column doesn't exist
+            [players] = await db.execute(`
+                SELECT id, username, avatar, elo, wins, losses, draws, total_matches, 0 as is_online
+                FROM users
+                ORDER BY elo DESC
+                LIMIT 20
+            `);
+        }
+        res.json(players);
+    } catch (err) {
+        console.error('Leaderboard error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};

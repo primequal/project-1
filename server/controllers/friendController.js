@@ -233,16 +233,32 @@ exports.getFriends = async (req, res) => {
     const userId = req.user.id;
     
     try {
-        const [friends] = await db.execute(
-            `SELECT u.id, u.username, u.avatar, u.elo, f.created_at as friend_since
-             FROM friendships f
-             JOIN users u ON (
-                 (f.user1_id = ? AND f.user2_id = u.id) OR 
-                 (f.user2_id = ? AND f.user1_id = u.id)
-             )
-             ORDER BY u.username`,
-            [userId, userId]
-        );
+        // Try with is_online first, fallback without it if column doesn't exist
+        let friends;
+        try {
+            [friends] = await db.execute(
+                `SELECT u.id, u.username, u.avatar, u.elo, u.is_online, u.last_online, f.created_at as friend_since
+                 FROM friendships f
+                 JOIN users u ON (
+                     (f.user1_id = ? AND f.user2_id = u.id) OR 
+                     (f.user2_id = ? AND f.user1_id = u.id)
+                 )
+                 ORDER BY u.is_online DESC, u.username`,
+                [userId, userId]
+            );
+        } catch (columnErr) {
+            // Fallback if is_online column doesn't exist
+            [friends] = await db.execute(
+                `SELECT u.id, u.username, u.avatar, u.elo, 0 as is_online, NULL as last_online, f.created_at as friend_since
+                 FROM friendships f
+                 JOIN users u ON (
+                     (f.user1_id = ? AND f.user2_id = u.id) OR 
+                     (f.user2_id = ? AND f.user1_id = u.id)
+                 )
+                 ORDER BY u.username`,
+                [userId, userId]
+            );
+        }
         
         res.json(friends);
     } catch (err) {
@@ -270,6 +286,47 @@ exports.removeFriend = async (req, res) => {
         res.json({ message: 'Đã xóa bạn bè' });
     } catch (err) {
         console.error('Remove friend error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Hủy lời mời kết bạn đã gửi (Undo)
+exports.undoFriendRequest = async (req, res) => {
+    const userId = req.user.id;
+    const { toUserId } = req.params;
+    
+    try {
+        // Kiểm tra xem đã là bạn bè chưa (edge case: request đã được accept)
+        const [[existingFriendship]] = await db.execute(
+            `SELECT id FROM friendships 
+             WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)`,
+            [userId, toUserId, toUserId, userId]
+        );
+        
+        if (existingFriendship) {
+            return res.status(400).json({ 
+                error: 'Người này đã là bạn bè của bạn rồi!',
+                alreadyFriends: true
+            });
+        }
+        
+        // Xóa request pending
+        const [result] = await db.execute(
+            `DELETE FROM friend_requests 
+             WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending'`,
+            [userId, toUserId]
+        );
+        
+        if (result.affectedRows === 0) {
+            // Request không tồn tại hoặc đã được xử lý
+            return res.status(404).json({ 
+                error: 'Lời mời không tồn tại hoặc đã được xử lý'
+            });
+        }
+        
+        res.json({ message: 'Đã hủy lời mời kết bạn' });
+    } catch (err) {
+        console.error('Undo friend request error:', err);
         res.status(500).json({ error: err.message });
     }
 };

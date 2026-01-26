@@ -24,4 +24,7 @@ router.get('/', auth, friendController.getFriends);
 // Xóa bạn bè
 router.delete('/:friendId', auth, friendController.removeFriend);
 
+// Hủy lời mời kết bạn đã gửi (Undo)
+router.delete('/request/:toUserId', auth, friendController.undoFriendRequest);
+
 module.exports = router;
