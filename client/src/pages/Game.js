@@ -651,7 +651,7 @@ const Game = () => {
                                             color: gameResult.iWon ? '#38a169' : (gameResult.isDraw ? '#666' : '#e53e3e'),
                                             fontWeight: '600'
                                         }}>
-                                            {gameResult.iWon ? '+' : ''}{gameResult.eloChanges?.winner || gameResult.eloChanges?.loser || 0}
+                                            {gameResult.iWon ? '+' : (gameResult.isDraw ? '' : '-')}{gameResult.iWon ? (gameResult.eloChanges?.winner || 0) : (gameResult.isDraw ? 0 : Math.abs(gameResult.eloChanges?.loser || 0))}
                                         </span>
                                     </div>
                                     <span style={{ fontSize: '18px', color: '#888' }}>vs</span>
@@ -664,7 +664,7 @@ const Game = () => {
                                             color: !gameResult.iWon && !gameResult.isDraw ? '#38a169' : (gameResult.isDraw ? '#666' : '#e53e3e'),
                                             fontWeight: '600'
                                         }}>
-                                            {!gameResult.iWon && !gameResult.isDraw ? '+' : ''}{!gameResult.iWon && !gameResult.isDraw ? (gameResult.eloChanges?.winner || 0) : (gameResult.eloChanges?.loser || 0)}
+                                            {!gameResult.iWon && !gameResult.isDraw ? '+' : (gameResult.isDraw ? '' : '-')}{!gameResult.iWon && !gameResult.isDraw ? (gameResult.eloChanges?.winner || 0) : (gameResult.isDraw ? 0 : Math.abs(gameResult.eloChanges?.loser || 0))}
                                         </span>
                                     </div>
                                 </div>
@@ -1075,12 +1075,14 @@ const Game = () => {
                                         <div className="glass-toggle-container mb-lg">
                                             <span className="glass-toggle-label">Chế độ:</span>
                                             <button 
+                                                type="button"
                                                 className={`glass-toggle-btn ${isRated ? 'active-success' : ''}`}
                                                 onClick={() => setIsRated(true)}
                                             >
                                                 🏆 Rated
                                             </button>
                                             <button 
+                                                type="button"
                                                 className={`glass-toggle-btn ${!isRated ? 'active' : ''}`}
                                                 onClick={() => setIsRated(false)}
                                             >
