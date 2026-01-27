@@ -33,8 +33,8 @@ const Leaderboard = () => {
         return <span style={{ fontSize: '24px' }}>🥉</span>;
       default:
         return <span style={{ 
-          background: 'rgba(102, 126, 234, 0.2)', 
-          color: '#667eea',
+          background: 'rgba(24, 119, 242, 0.15)', 
+          color: '#1877f2',
           padding: '4px 10px',
           borderRadius: '12px',
           fontWeight: '600',
@@ -70,7 +70,7 @@ const Leaderboard = () => {
           }}>
             <h1 style={{ 
               margin: 0,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: 'linear-gradient(135deg, #1877f2 0%, #0d65d9 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               fontSize: '28px'
@@ -101,7 +101,7 @@ const Leaderboard = () => {
               display: 'grid',
               gridTemplateColumns: '60px 1fr 100px 80px 80px 80px 100px',
               padding: '12px 20px',
-              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+              background: 'linear-gradient(135deg, #1877f2, #0d65d9)',
               borderRadius: '12px 12px 0 0',
               color: 'white',
               fontWeight: '600',
@@ -129,7 +129,7 @@ const Leaderboard = () => {
                   alignItems: 'center',
                   borderBottom: '1px solid rgba(200, 200, 220, 0.2)',
                   background: isCurrentUser 
-                    ? 'rgba(102, 126, 234, 0.1)' 
+                    ? 'rgba(24, 119, 242, 0.1)' 
                     : (rank <= 3 ? 'rgba(255, 215, 0, 0.05)' : 'transparent'),
                   transition: 'background 0.2s'
                 }}>
@@ -170,14 +170,14 @@ const Leaderboard = () => {
                     <div>
                       <div style={{ 
                         fontWeight: '600', 
-                        color: isCurrentUser ? '#667eea' : '#2d3748',
+                        color: isCurrentUser ? '#1877f2' : '#2d3748',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px'
                       }}>
                         {player.username}
                         {isCurrentUser && <span style={{ 
-                          background: '#667eea', 
+                          background: '#1877f2', 
                           color: 'white', 
                           padding: '2px 6px', 
                           borderRadius: '8px',
@@ -195,7 +195,7 @@ const Leaderboard = () => {
                     textAlign: 'center', 
                     fontWeight: '700',
                     fontSize: '16px',
-                    color: rank === 1 ? '#ffd700' : (rank <= 3 ? '#667eea' : '#2d3748')
+                    color: rank === 1 ? '#ffd700' : (rank <= 3 ? '#1877f2' : '#2d3748')
                   }}>
                     {player.elo}
                   </div>
@@ -219,7 +219,7 @@ const Leaderboard = () => {
                   <div style={{ 
                     textAlign: 'center',
                     fontWeight: '600',
-                    color: '#667eea'
+                    color: '#1877f2'
                   }}>
                     {getWinRate(player)}
                   </div>

@@ -1113,21 +1113,21 @@ const Game = () => {
                                             </p>
                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
                                                 <button 
-                                                    className={`glass-btn ${pvfTimeControlInput === '30' ? 'glass-btn-info' : ''}`}
+                                                    className={`glass-btn ${pvfTimeControlInput === '30' ? 'glass-btn-success' : ''}`}
                                                     onClick={() => setPvfTimeControlInput('30')}
                                                     style={{ padding: '8px 16px', minWidth: '60px' }}
                                                 >
                                                     30s
                                                 </button>
                                                 <button 
-                                                    className={`glass-btn ${pvfTimeControlInput === '60' ? 'glass-btn-info' : ''}`}
+                                                    className={`glass-btn ${pvfTimeControlInput === '60' ? 'glass-btn-success' : ''}`}
                                                     onClick={() => setPvfTimeControlInput('60')}
                                                     style={{ padding: '8px 16px', minWidth: '60px' }}
                                                 >
                                                     60s
                                                 </button>
                                                 <button 
-                                                    className={`glass-btn ${pvfTimeControlInput === '0' ? 'glass-btn-info' : ''}`}
+                                                    className={`glass-btn ${pvfTimeControlInput === '0' ? 'glass-btn-success' : ''}`}
                                                     onClick={() => setPvfTimeControlInput('0')}
                                                     style={{ padding: '8px 16px', minWidth: '80px' }}
                                                 >

@@ -734,15 +734,18 @@ io.on('connection', (socket) => {
         console.log('[TIME_UP] Processing: winnerId=', winnerId, 'loserId=', loserIdNum);
         
         // Helper function to create ELO notification
-        const createEloNotification = async (userId, eloChange) => {
+        const createEloNotification = async (userId, eloChange, opponentName, isWin) => {
             try {
-                const title = eloChange >= 0 ? `+${eloChange} ELO` : `${eloChange} ELO`;
-                const content = eloChange >= 0 
-                    ? `Bạn nhận được ${eloChange} ELO từ chiến thắng!`
-                    : `Bạn mất ${Math.abs(eloChange)} ELO từ trận thua.`;
+                const sign = eloChange >= 0 ? '+' : '';
+                const emoji = eloChange >= 0 ? '📈' : '📉';
+                const result = isWin ? 'thắng' : (eloChange === 0 ? 'hòa' : 'thua');
+                
+                const title = `${emoji} Biến động ELO: ${sign}${eloChange}`;
+                const content = `Sau trận đấu với ${opponentName}, ELO của bạn ${eloChange >= 0 ? 'tăng' : 'giảm'} ${Math.abs(eloChange)} điểm`;
+                
                 await db.execute(
                     'INSERT INTO notifications (user_id, type, title, content, data) VALUES (?, ?, ?, ?, ?)',
-                    [userId, 'elo_change', title, content, JSON.stringify({ eloChange })]
+                    [userId, 'elo_change', title, content, JSON.stringify({ eloChange, opponentName, result })]
                 );
             } catch (err) {
                 console.error("[TIME_UP] Create notification error:", err.message);
@@ -788,9 +791,11 @@ io.on('connection', (socket) => {
                         );
                     }
                     
-                    // Create ELO notifications
-                    await createEloNotification(winnerId, winnerChange);
-                    await createEloNotification(loserIdNum, loserChange);
+                    // Create ELO notifications with opponent names
+                    const winnerName = winnerId === game.p1.userId ? game.p1.username : game.p2.username;
+                    const loserName = loserIdNum === game.p1.userId ? game.p1.username : game.p2.username;
+                    await createEloNotification(winnerId, winnerChange, loserName, true);
+                    await createEloNotification(loserIdNum, loserChange, winnerName, false);
                     
                     // Get updated user data
                     const [updatedWinner] = await db.execute('SELECT id, username, email, avatar, elo, total_matches, wins, losses, draws FROM users WHERE id = ?', [winnerId]);

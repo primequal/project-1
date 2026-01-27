@@ -206,7 +206,7 @@ const NotificationBell = () => {
           {/* Header */}
           <div style={{
             padding: '15px 20px',
-            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+            background: 'linear-gradient(135deg, #1877f2, #0d65d9)',
             color: 'white',
             display: 'flex',
             justifyContent: 'space-between',
@@ -250,12 +250,12 @@ const NotificationBell = () => {
                   style={{
                     padding: '15px 20px',
                     borderBottom: '1px solid rgba(200, 200, 220, 0.3)',
-                    background: notif.is_read ? 'transparent' : 'rgba(102, 126, 234, 0.08)',
+                    background: notif.is_read ? 'transparent' : 'rgba(24, 119, 242, 0.08)',
                     cursor: 'pointer',
                     transition: 'background 0.2s'
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(102, 126, 234, 0.12)'}
-                  onMouseOut={(e) => e.currentTarget.style.background = notif.is_read ? 'transparent' : 'rgba(102, 126, 234, 0.08)'}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(24, 119, 242, 0.12)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = notif.is_read ? 'transparent' : 'rgba(24, 119, 242, 0.08)'}
                 >
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                     <span style={{ fontSize: '24px' }}>{getNotificationIcon(notif.type)}</span>
@@ -281,11 +281,11 @@ const NotificationBell = () => {
                           flexWrap: 'wrap'
                         }}>
                           <span style={{
-                            background: 'rgba(102, 126, 234, 0.15)',
+                            background: 'rgba(24, 119, 242, 0.15)',
                             padding: '4px 10px',
                             borderRadius: '8px',
                             fontSize: '12px',
-                            color: '#667eea',
+                            color: '#1877f2',
                             fontWeight: '600',
                             fontFamily: 'monospace'
                           }}>
@@ -295,14 +295,14 @@ const NotificationBell = () => {
                             onClick={(e) => handleCopyRoomId(e, notif.data.roomId)}
                             style={{
                               background: copiedId === notif.data.roomId 
-                                ? 'linear-gradient(135deg, #38ef7d, #11998e)' 
-                                : 'rgba(102, 126, 234, 0.2)',
+                                ? 'linear-gradient(135deg, #42b72a, #36a420)' 
+                                : 'rgba(24, 119, 242, 0.2)',
                               border: 'none',
                               padding: '4px 10px',
                               borderRadius: '8px',
                               fontSize: '11px',
                               cursor: 'pointer',
-                              color: copiedId === notif.data.roomId ? 'white' : '#667eea',
+                              color: copiedId === notif.data.roomId ? 'white' : '#1877f2',
                               fontWeight: '500'
                             }}
                           >
@@ -311,7 +311,7 @@ const NotificationBell = () => {
                           <button
                             onClick={(e) => handleJoinRoom(e, notif)}
                             style={{
-                              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                              background: 'linear-gradient(135deg, #1877f2, #0d65d9)',
                               border: 'none',
                               padding: '4px 12px',
                               borderRadius: '8px',
@@ -335,7 +335,7 @@ const NotificationBell = () => {
                         width: '10px',
                         height: '10px',
                         borderRadius: '50%',
-                        background: '#667eea',
+                        background: '#1877f2',
                         flexShrink: 0
                       }}></span>
                     )}

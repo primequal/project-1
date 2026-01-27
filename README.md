@@ -108,16 +108,32 @@ Client sẽ chạy tại: `http://localhost:3000`
 
 ## 🎯 Tính năng
 
-- ⚔️ **PvP** - Ghép cặp ngẫu nhiên với người chơi khác
-- 🤖 **PvE** - Đấu với AI (Minimax algorithm)
+### Chế độ chơi
+- ⚔️ **PvP** - Ghép cặp ngẫu nhiên với người chơi khác (cùng time control)
+- 🤖 **PvE** - Đấu với AI (3 độ khó: Dễ, Trung bình, Khó - Minimax algorithm)
 - 👥 **PvF** - Tạo phòng chơi với bạn bè (Rated/Unrated)
 - 🎬 **Spectator** - Xem trực tiếp trận đấu của người khác
+
+### Hệ thống xếp hạng & Thống kê
 - 📊 **ELO System** - Hệ thống xếp hạng ELO
-- 👫 **Friends** - Kết bạn bằng username
-- 🔔 **Notifications** - Thông báo biến động ELO, lời mời kết bạn
+- 🏆 **Leaderboard** - Bảng xếp hạng top người chơi
 - 📜 **History** - Xem lại lịch sử và replay các ván đấu
-- 💬 **Chat** - Chat trong game
+
+### Kết bạn & Thông báo
+- 👫 **Friends** - Kết bạn bằng username
+- 🟢 **Online Status** - Hiển thị trạng thái online/offline của bạn bè
+- 🎮 **Mời bạn bè** - Mời bạn bè chơi PvF qua Friends Panel hoặc Notification
+- 🔔 **Notifications** - Thông báo biến động ELO, lời mời kết bạn, mời chơi game
+
+### Trong trận đấu
+- ⏱️ **Time Control** - Giới hạn thời gian mỗi lượt (PvP: 30s/60s, PvF: 30s/60s/Vô hạn/Tùy chỉnh)
+- 💬 **Chat + Emoji** - Chat trong game với emoji picker
+- 🔄 **Rematch** - Yêu cầu đấu lại sau khi kết thúc ván
+- 🔊 **Sound Effects** - Hiệu ứng âm thanh (đặt quân, thắng, thua, bắt đầu game)
+
+### Tài khoản
 - 🖼️ **Avatar** - Đổi avatar bằng URL hoặc upload file
+- 🔐 **Đổi mật khẩu** - Thay đổi mật khẩu tài khoản
 
 ## 📁 Cấu trúc thư mục
 

@@ -221,16 +221,16 @@ const FriendsPanel = () => {
       width: '10px',
       height: '10px',
       borderRadius: '50%',
-      background: isOnline ? '#38ef7d' : '#888',
+      background: isOnline ? '#42b72a' : '#888',
       marginRight: '6px',
-      boxShadow: isOnline ? '0 0 6px #38ef7d' : 'none'
+      boxShadow: isOnline ? '0 0 6px #42b72a' : 'none'
     }} title={isOnline ? 'Đang online' : 'Offline'} />
   );
 
   const getStatusButton = (user) => {
     switch (user.friendStatus) {
       case 'friend':
-        return <span style={{ color: '#38ef7d', fontSize: '12px' }}>✅ Bạn bè</span>;
+        return <span style={{ color: '#42b72a', fontSize: '12px' }}>✅ Bạn bè</span>;
       case 'request_sent':
         return (
           <button
@@ -255,7 +255,7 @@ const FriendsPanel = () => {
           <button
             onClick={() => handleSendRequest(user.id)}
             style={{
-              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+              background: 'linear-gradient(135deg, #1877f2, #0d65d9)',
               color: 'white',
               border: 'none',
               padding: '6px 12px',
@@ -299,7 +299,7 @@ const FriendsPanel = () => {
             position: 'absolute',
             top: '-5px',
             right: '-5px',
-            background: 'linear-gradient(135deg, #11998e, #38ef7d)',
+            background: 'linear-gradient(135deg, #42b72a, #36a420)',
             color: 'white',
             borderRadius: '50%',
             width: '22px',
@@ -335,7 +335,7 @@ const FriendsPanel = () => {
           {/* Header */}
           <div style={{
             padding: '15px 20px',
-            background: 'linear-gradient(135deg, #11998e, #38ef7d)',
+            background: 'linear-gradient(135deg, #42b72a, #36a420)',
             color: 'white'
           }}>
             <span style={{ fontWeight: '600', fontSize: '16px' }}>👥 Bạn bè</span>
@@ -358,12 +358,12 @@ const FriendsPanel = () => {
                   flex: 1,
                   padding: '12px',
                   border: 'none',
-                  background: activeTab === tab.key ? 'rgba(102, 126, 234, 0.1)' : 'transparent',
-                  color: activeTab === tab.key ? '#667eea' : '#666',
+                  background: activeTab === tab.key ? 'rgba(24, 119, 242, 0.1)' : 'transparent',
+                  color: activeTab === tab.key ? '#1877f2' : '#666',
                   fontWeight: activeTab === tab.key ? '600' : '400',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  borderBottom: activeTab === tab.key ? '2px solid #667eea' : '2px solid transparent'
+                  borderBottom: activeTab === tab.key ? '2px solid #1877f2' : '2px solid transparent'
                 }}
               >
                 {tab.label}
@@ -375,8 +375,8 @@ const FriendsPanel = () => {
           {message && (
             <div style={{
               padding: '10px 15px',
-              background: 'rgba(102, 126, 234, 0.1)',
-              color: '#667eea',
+              background: 'rgba(24, 119, 242, 0.1)',
+              color: '#1877f2',
               fontSize: '13px',
               textAlign: 'center'
             }}>
@@ -419,9 +419,9 @@ const FriendsPanel = () => {
                         width: '12px',
                         height: '12px',
                         borderRadius: '50%',
-                        background: friend.is_online || onlineUsers.has(friend.id) ? '#38ef7d' : '#888',
+                        background: friend.is_online || onlineUsers.has(friend.id) ? '#42b72a' : '#888',
                         border: '2px solid white',
-                        boxShadow: friend.is_online || onlineUsers.has(friend.id) ? '0 0 6px #38ef7d' : 'none'
+                        boxShadow: friend.is_online || onlineUsers.has(friend.id) ? '0 0 6px #42b72a' : 'none'
                       }} />
                     </div>
                     <div style={{ flex: 1 }}>
@@ -429,7 +429,7 @@ const FriendsPanel = () => {
                         {friend.username}
                       </div>
                       <div style={{ fontSize: '12px', color: '#888' }}>
-                        ELO: {friend.elo} • {friend.is_online || onlineUsers.has(friend.id) ? <span style={{ color: '#38ef7d' }}>Online</span> : 'Offline'}
+                        ELO: {friend.elo} • {friend.is_online || onlineUsers.has(friend.id) ? <span style={{ color: '#42b72a' }}>Online</span> : 'Offline'}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
@@ -439,7 +439,7 @@ const FriendsPanel = () => {
                           onClick={() => handleInviteFriend(friend)}
                           title="Mời chơi"
                           style={{
-                            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                            background: 'linear-gradient(135deg, #1877f2, #0d65d9)',
                             color: 'white',
                             border: 'none',
                             padding: '6px 10px',
@@ -502,7 +502,7 @@ const FriendsPanel = () => {
                       <button
                         onClick={() => handleAcceptRequest(req.id)}
                         style={{
-                          background: 'linear-gradient(135deg, #11998e, #38ef7d)',
+                          background: 'linear-gradient(135deg, #42b72a, #36a420)',
                           color: 'white',
                           border: 'none',
                           padding: '6px 12px',
@@ -557,7 +557,7 @@ const FriendsPanel = () => {
                       onClick={handleSearch}
                       disabled={loading}
                       style={{
-                        background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                        background: 'linear-gradient(135deg, #1877f2, #0d65d9)',
                         color: 'white',
                         border: 'none',
                         padding: '10px 20px',
