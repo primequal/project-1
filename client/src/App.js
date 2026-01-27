@@ -8,6 +8,7 @@ import Game from './pages/Game';
 import History from './pages/History';
 import Replay from './pages/Replay';
 import Leaderboard from './pages/Leaderboard';
+import soundManager from './hooks/useSound';
 
 function App() {
   // Dùng state để lưu token, khởi tạo bằng giá trị trong localStorage
@@ -17,6 +18,25 @@ function App() {
   const updateAuth = () => {
     setToken(localStorage.getItem('token'));
   };
+
+  // Global button click sound effect
+  useEffect(() => {
+    const handleClick = (e) => {
+      // Check if clicked element is a button or has button-like behavior
+      const target = e.target;
+      const isButton = target.tagName === 'BUTTON' || 
+                       target.classList.contains('glass-btn') ||
+                       target.closest('button') ||
+                       target.closest('.glass-btn');
+      
+      if (isButton) {
+        soundManager.playClickSound();
+      }
+    };
+
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   return (
     <Router>

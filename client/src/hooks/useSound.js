@@ -183,6 +183,35 @@ class SoundManager {
     }
   }
 
+  // Soft click/pop sound for buttons - Facebook-like subtle feedback
+  playClickSound() {
+    if (!this.enabled) return;
+    
+    try {
+      const ctx = this.getContext();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      // Soft pop sound - short and subtle
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(600, ctx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.06);
+      
+      // Very quick and soft
+      gainNode.gain.setValueAtTime(0, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 0.01);
+      gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.08);
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.1);
+    } catch (e) {
+      console.log('Sound not available');
+    }
+  }
+
   setEnabled(enabled) {
     this.enabled = enabled;
   }
@@ -202,6 +231,7 @@ export const useSound = () => {
     playWinSound: () => soundManager.playWinSound(),
     playLoseSound: () => soundManager.playLoseSound(),
     playGameStartSound: () => soundManager.playGameStartSound(),
+    playClickSound: () => soundManager.playClickSound(),
     setEnabled: (enabled) => soundManager.setEnabled(enabled),
     isEnabled: () => soundManager.isEnabled(),
   };
