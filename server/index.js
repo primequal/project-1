@@ -923,4 +923,22 @@ io.on('connection', (socket) => {
 });
 
 const PORT = 5000;
-server.listen(PORT, () => console.log(`Server chạy tại port ${PORT}`));
+
+// Reset all users to offline status when server starts
+// This fixes the bug where users remain marked as online after server restart
+const resetAllUsersOffline = async () => {
+    try {
+        await db.execute('UPDATE users SET is_online = FALSE');
+        console.log('✅ Reset tất cả users về trạng thái offline');
+    } catch (err) {
+        // Ignore error if column doesn't exist
+        if (!err.message.includes('Unknown column')) {
+            console.error('Lỗi reset online status:', err);
+        }
+    }
+};
+
+server.listen(PORT, async () => {
+    await resetAllUsersOffline();
+    console.log(`Server chạy tại port ${PORT}`);
+});
