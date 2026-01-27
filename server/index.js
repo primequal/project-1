@@ -65,6 +65,13 @@ const handlePlayerForfeit = async (leavingUserId) => {
     
     if (game.type !== 'pvp' && game.type !== 'pvf') return;
     
+    // If game hasn't started yet (no p2), just clean up the room without forfeit logic
+    if (!game.p2) {
+        delete activeGames[roomId];
+        delete userToRoom[leavingUserId];
+        return;
+    }
+    
     game.isOver = true;
     
     const winnerId = (game.p1.userId === leavingUserId) ? game.p2.userId : game.p1.userId;
