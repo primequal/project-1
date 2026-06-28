@@ -39,7 +39,7 @@ function App() {
   }, []);
 
   return (
-    <Router>
+    <Router basename={process.env.PUBLIC_URL}>
       <Routes>
         {/* Truyền hàm updateAuth vào trang Login */}
         <Route path="/login" element={<Login updateAuth={updateAuth} />} />
